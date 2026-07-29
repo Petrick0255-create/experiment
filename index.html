@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#4f8df7">
+  <title>LAB NOTE | 실험 관리</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./index.html" aria-label="LAB NOTE 홈">
+      <span class="brand-mark" aria-hidden="true">
+        <span class="orbit orbit-a"></span>
+        <span class="orbit orbit-b"></span>
+        <span class="atom-core"></span>
+      </span>
+      <span>
+        <strong>LAB NOTE</strong>
+        <small>EXPERIMENT STUDIO</small>
+      </span>
+    </a>
+
+    <nav class="desktop-nav" aria-label="주요 메뉴">
+      <a href="#overview">대시보드</a>
+      <a href="./program/exp-archive/index.html">실험 아카이브</a>
+      <a href="./program/exp-curriculum/index.html">커리큘럼</a>
+      <a href="#materials">준비물</a>
+    </nav>
+
+    <div class="header-actions">
+      <button class="icon-button" id="themeToggle" type="button" aria-label="화면 테마 변경">☼</button>
+      <a class="login-button" href="#login">관리자 로그인</a>
+      <button class="menu-button" id="menuButton" type="button" aria-expanded="false" aria-controls="mobileMenu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <nav class="mobile-menu" id="mobileMenu" aria-label="모바일 메뉴">
+    <a href="#overview">대시보드</a>
+    <a href="./program/exp-archive/index.html">실험 아카이브</a>
+    <a href="./program/exp-curriculum/index.html">커리큘럼</a>
+    <a href="#materials">준비물</a>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">SCIENCE PROGRAM MANAGEMENT</p>
+        <h1>실험 자료와 커리큘럼을<br><em>하나의 기준으로 관리합니다.</em></h1>
+        <p class="hero-description">
+          실험 자료, 교과 연계, 준비물과 연간 배치를 한곳에서 관리하는
+          실험 교육 운영 시스템입니다.
+        </p>
+        <div class="hero-actions">
+          <a class="primary-button" href="./program/exp-archive/index.html">
+            실험 찾아보기 <span aria-hidden="true">→</span>
+          </a>
+          <a class="secondary-button" href="./program/exp-curriculum/index.html">커리큘럼 설계</a>
+        </div>
+        <div class="hero-meta">
+          <span><strong>744</strong> 등록 실험</span>
+          <span><strong>7</strong> 학습 단계</span>
+          <span><strong>7</strong> 실험 분야</span>
+        </div>
+      </div>
+
+      <div class="hero-visual" aria-label="실험 관리 화면 예시">
+        <span class="bubble bubble-one"></span>
+        <span class="bubble bubble-two"></span>
+        <div class="visual-board">
+          <div class="board-heading">
+            <span>
+              <small>THIS WEEK</small>
+              <strong>7월 3주 프로그램</strong>
+            </span>
+            <span class="board-badge">4개 실험</span>
+          </div>
+          <article class="experiment-row">
+            <span class="subject-icon physics">P</span>
+            <span><strong>춤추는 자석</strong><small>물리 · 3학년</small></span>
+            <span class="status">준비 완료</span>
+          </article>
+          <article class="experiment-row">
+            <span class="subject-icon chemistry">C</span>
+            <span><strong>무지개 용액</strong><small>화학 · 2학년</small></span>
+            <span class="status preparing">준비 중</span>
+          </article>
+          <article class="experiment-row">
+            <span class="subject-icon biology">B</span>
+            <span><strong>잎맥 관찰</strong><small>생명과학 · 4학년</small></span>
+            <span class="status">준비 완료</span>
+          </article>
+          <div class="material-strip">
+            <span>이번 주 준비물</span>
+            <strong>자석 · 비커 · 지시약 · 돋보기</strong>
+          </div>
+        </div>
+      </div>
+      <a class="scroll-cue" href="#overview">SCROLL DOWN <span>⌄</span></a>
+    </section>
+
+    <section class="overview section-shell" id="overview">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow blue">EXPERIMENT WORKSPACE</p>
+          <h2>무엇을 관리할까요?</h2>
+        </div>
+        <p>필요한 작업으로 바로 이동하세요. 기능은 하위 폴더를 추가해 계속 확장할 수 있습니다.</p>
+      </div>
+
+      <div class="service-grid">
+        <a class="service-card archive-card" href="./program/exp-archive/index.html">
+          <span class="card-number">01</span>
+          <span class="service-icon">⌕</span>
+          <h3>실험 아카이브</h3>
+          <p>분야, 학년, 교과 연계로 실험을 빠르게 검색하고 실험지를 확인합니다.</p>
+          <span class="card-link">아카이브 열기 →</span>
+        </a>
+
+        <a class="service-card curriculum-card" href="./program/exp-curriculum/index.html">
+          <span class="card-number">02</span>
+          <span class="service-icon">▦</span>
+          <h3>커리큘럼 설계</h3>
+          <p>연도별 월·주차에 실험을 배치하고 프로그램 순서를 조정합니다.</p>
+          <span class="card-link">설계 화면 열기 →</span>
+        </a>
+
+        <a class="service-card material-card" href="#materials">
+          <span class="card-number">03</span>
+          <span class="service-icon">⌑</span>
+          <h3>준비물 관리</h3>
+          <p>주차별로 필요한 재료와 수량을 모아 준비 상태를 점검합니다.</p>
+          <span class="card-link">준비물 확인 →</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="subjects">
+      <div class="section-shell subject-inner">
+        <div>
+          <p class="eyebrow">SEVEN CATEGORIES</p>
+          <h2>일관된 기준으로<br>분류하고 확장합니다.</h2>
+          <p>대표 분야 코드는 유지하고, 융합 실험은 연계 분야로 함께 관리합니다.</p>
+        </div>
+        <div class="subject-list">
+          <span class="subject-pill"><b>PHY</b> 물리</span>
+          <span class="subject-pill"><b>CHE</b> 화학</span>
+          <span class="subject-pill"><b>BIO</b> 생명과학</span>
+          <span class="subject-pill"><b>EAR</b> 지구과학</span>
+          <span class="subject-pill"><b>MAT</b> 수학</span>
+          <span class="subject-pill"><b>ENG</b> 공학</span>
+          <span class="subject-pill"><b>ART</b> 예술</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="materials section-shell" id="materials">
+      <div class="material-panel">
+        <span class="material-deco"></span>
+        <p class="eyebrow">MATERIAL CHECK</p>
+        <h2>이번 주 준비물을<br>놓치지 마세요.</h2>
+        <p>커리큘럼에 배치된 실험을 기준으로 필요한 준비물을 자동으로 모으는 영역입니다.</p>
+        <button type="button" disabled>Firebase 연결 후 사용</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand footer-brand" href="./index.html">
+      <span class="brand-mark" aria-hidden="true"><span class="atom-core"></span></span>
+      <span><strong>LAB NOTE</strong><small>EXPERIMENT STUDIO</small></span>
+    </a>
+    <p>과학 실험 자료와 커리큘럼을 위한 개인 관리 공간</p>
+    <small>© <span id="currentYear"></span> LAB NOTE</small>
+  </footer>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
