@@ -18,12 +18,25 @@ const lines = v => clean(v).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
 const escapeHtml = v => clean(v).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 
 async function boot() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      archive = normalizeArchive(JSON.parse(saved));
+      $("#saveState").textContent = `저장된 JSON · ${archive.experiments.length}개`;
+      renderList();
+      return;
+    } catch (error) {
+      console.warn("저장된 JSON을 읽지 못해 다시 가져옵니다.", error);
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
   const syncConfig = getSyncConfig();
   if (syncConfig) {
     try {
       archive = await requestCurrentArchive(syncConfig);
       persist();
-      $("#saveState").textContent = "현재 시트 기준";
+      $("#saveState").textContent = `최초 JSON 저장 · ${archive.experiments.length}개`;
       renderList();
       return;
     } catch (error) {
@@ -35,15 +48,9 @@ async function boot() {
     if (!response.ok) throw new Error();
     archive = normalizeArchive(await response.json());
     localStorage.setItem(STORAGE_KEY, JSON.stringify(archive));
-    $("#saveState").textContent = "Drive JSON 기준";
+    $("#saveState").textContent = `기본 JSON 저장 · ${archive.experiments.length}개`;
   } catch {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      archive = normalizeArchive(JSON.parse(saved));
-      $("#saveState").textContent = "브라우저 임시본";
-    } else {
-      $("#saveState").textContent = "JSON을 가져오세요";
-    }
+    $("#saveState").textContent = "JSON을 가져오세요";
   }
   renderList();
 }
