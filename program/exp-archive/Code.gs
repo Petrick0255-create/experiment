@@ -54,12 +54,19 @@ function resetSyncKey() {
 }
 
 function doGet(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
   try {
     verifySyncKey_(e && e.parameter ? e.parameter.key : '');
-    const archive = readArchiveFile_(true);
+    const ss = SpreadsheetApp.openById(ARCHIVE_CONFIG.spreadsheetId);
+    ensureArchiveSheets_(ss);
+    const archive = buildArchiveFromMaster_(ss);
+    writeArchiveFile_(archive);
     return jsonResponse_({ok:true, archive:archive});
   } catch (error) {
     return jsonResponse_({ok:false, message:error.message});
+  } finally {
+    lock.releaseLock();
   }
 }
 

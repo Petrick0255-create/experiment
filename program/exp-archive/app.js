@@ -21,12 +21,9 @@ async function boot() {
   const syncConfig = getSyncConfig();
   if (syncConfig) {
     try {
-      const response = await fetch(`${syncConfig.url}?key=${encodeURIComponent(syncConfig.key)}`, { cache:"no-store" });
-      const result = await response.json();
-      if (!result.ok) throw new Error(result.message || "동기화 데이터를 읽지 못했습니다.");
-      archive = normalizeArchive(result.archive);
+      archive = await requestCurrentArchive(syncConfig);
       persist();
-      $("#saveState").textContent = "관리 시트와 연결됨";
+      $("#saveState").textContent = "현재 시트 기준";
       renderList();
       return;
     } catch (error) {
@@ -49,6 +46,14 @@ async function boot() {
     }
   }
   renderList();
+}
+
+async function requestCurrentArchive(config) {
+  const separator=config.url.includes("?")?"&":"?";
+  const response=await fetch(`${config.url}${separator}key=${encodeURIComponent(config.key)}&source=sheet&_=${Date.now()}`,{cache:"no-store"});
+  const result=await response.json();
+  if(!result.ok)throw new Error(result.message||"현재 시트 데이터를 읽지 못했습니다.");
+  return normalizeArchive(result.archive);
 }
 
 function normalizeArchive(raw) {
@@ -250,13 +255,35 @@ async function syncArchive() {
   }
 }
 
+async function refreshFromSheet() {
+  const config=getSyncConfig()||configureSync();
+  if(!config)return;
+  const button=$("#refreshJsonButton");
+  button.disabled=true;button.textContent="가져오는 중…";$("#saveState").textContent="현재 시트 읽는 중";
+  try{
+    archive=await requestCurrentArchive(config);
+    selectedId="";
+    persist();
+    el.form.hidden=true;
+    el.welcome.hidden=false;
+    renderList();
+    $("#saveState").textContent=`현재 시트 반영 · ${archive.experiments.length}개`;
+  }catch(error){
+    console.error(error);
+    $("#saveState").textContent="시트 가져오기 실패";
+    alert(`현재 스프레드시트를 가져오지 못했습니다.\n${error.message}\n\nApps Script를 새 버전으로 배포했는지 확인해 주세요.`);
+  }finally{
+    button.disabled=false;button.textContent="JSON 가져오기";
+  }
+}
+
 $("#newButton").addEventListener("click",()=>newExperiment());
 $("#duplicateButton").addEventListener("click",()=>{const x=archive.experiments.find(v=>v.id===selectedId);if(x)newExperiment(x)});
 $("#addMaterialButton").addEventListener("click",()=>addMaterialRow());
 $("#exportButton").addEventListener("click",download);
+$("#refreshJsonButton").addEventListener("click",refreshFromSheet);
 $("#syncButton").addEventListener("click",syncArchive);
 $("#syncSettingsButton").addEventListener("click",configureSync);
-$("#importInput").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{archive=normalizeArchive(JSON.parse(await f.text()));selectedId="";persist();el.form.hidden=true;el.welcome.hidden=false;renderList();$("#saveState").textContent="가져온 JSON";}catch{alert("올바른 JSON 파일이 아닙니다.");}e.target.value=""});
 [el.search,el.field,el.grade,el.difficulty,el.sort].forEach(x=>["input","change"].forEach(ev=>x.addEventListener(ev,renderList)));
 document.addEventListener("click",event=>{if(!event.target.closest(".experiment-row"))$$(".item-menu").forEach(menu=>menu.hidden=true)});
 boot();
