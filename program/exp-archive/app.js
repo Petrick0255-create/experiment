@@ -1,5 +1,6 @@
 const DATA_URL = "./experiment-archive.json";
 const STORAGE_KEY = "experiment-archive-working-v2";
+const SYNC_CONFIG_KEY = "experiment-archive-sync-config";
 const FIELD_CODES = { 물리:"P", 화학:"C", 생명:"B", 지구과학:"E", 수학:"M", 공학:"G", 예술:"A" };
 const $ = (q, root=document) => root.querySelector(q);
 const $$ = (q, root=document) => [...root.querySelectorAll(q)];
@@ -17,6 +18,21 @@ const lines = v => clean(v).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
 const escapeHtml = v => clean(v).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 
 async function boot() {
+  const syncConfig = getSyncConfig();
+  if (syncConfig) {
+    try {
+      const response = await fetch(`${syncConfig.url}?key=${encodeURIComponent(syncConfig.key)}`, { cache:"no-store" });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.message || "동기화 데이터를 읽지 못했습니다.");
+      archive = normalizeArchive(result.archive);
+      persist();
+      $("#saveState").textContent = "관리 시트와 연결됨";
+      renderList();
+      return;
+    } catch (error) {
+      console.warn(error);
+    }
+  }
   try {
     const response = await fetch(DATA_URL, { cache:"no-store" });
     if (!response.ok) throw new Error();
@@ -73,15 +89,23 @@ function renderList() {
   el.list.innerHTML="";
   const template=$("#listItemTemplate");
   items.forEach(x=>{
-    const node=template.content.cloneNode(true), button=$(".experiment-item",node);
+    const node=template.content.cloneNode(true), row=$(".experiment-row",node), button=$(".experiment-item",node);
     button.dataset.id=x.id;
-    button.classList.toggle("active",x.id===selectedId);
+    row.classList.toggle("active",x.id===selectedId);
     const image=x.images[0];
     $(".thumb",node).innerHTML=image ? `<img src="${escapeHtml(image.thumbnailUrl || image.viewUrl)}" alt="">` : `<b>${escapeHtml(x.field?.[0] || "L")}</b>`;
     $(".item-code",node).textContent=x.code || x.id;
     $(".item-name",node).textContent=x.name || "이름 없는 실험";
     $(".item-meta",node).textContent=[x.field,x.grade,x.unit].filter(Boolean).join(" · ") || "분류 미입력";
     button.addEventListener("click",()=>selectExperiment(x.id));
+    const menu=$(".item-menu",node);
+    $(".more-button",node).addEventListener("click",event=>{
+      event.stopPropagation();
+      $$(".item-menu").forEach(openMenu=>{if(openMenu!==menu)openMenu.hidden=true});
+      menu.hidden=!menu.hidden;
+    });
+    $('[data-action="edit"]',node).addEventListener("click",()=>{menu.hidden=true;selectExperiment(x.id);el.form.scrollIntoView({behavior:"smooth",block:"start"})});
+    $('[data-action="delete"]',node).addEventListener("click",()=>{menu.hidden=true;deleteExperiment(x.id)});
     el.list.append(node);
   });
   $("#resultCount").textContent=items.length;
@@ -90,6 +114,7 @@ function renderList() {
 }
 
 function selectExperiment(id) {
+  $$(".item-menu").forEach(menu=>menu.hidden=true);
   selectedId=id; imageIndex=0;
   const x=archive.experiments.find(v=>v.id===id);
   if(!x) return;
@@ -141,15 +166,27 @@ function newExperiment(base=null) {
   persist(); selectExperiment(x.id);
 }
 
-el.form.addEventListener("submit",e=>{
-  e.preventDefault(); const x=archive.experiments.find(v=>v.id===$("#idInput").value); if(!x)return;
+function saveEditor(showMessage=true) {
+  if (el.form.hidden) return true;
+  const x=archive.experiments.find(v=>v.id===$("#idInput").value); if(!x)return false;
+  if (!clean($("#nameInput").value)) {
+    if (showMessage) alert("실험명을 입력해 주세요.");
+    return false;
+  }
   Object.assign(x,{name:clean($("#nameInput").value),code:clean($("#codeInput").value)||nextCode($("#fieldInput").value),field:$("#fieldInput").value,
     subfield:clean($("#subfieldInput").value),difficulty:$("#difficultyInput").value,target:$("#targetInput").value,grade:$("#gradeInput").value,
     curriculum2025:clean($("#curriculumInput").value),unit:clean($("#unitInput").value),coreConcepts:clean($("#conceptInput").value),
     materials:collectMaterials(),updatedAt:new Date().toISOString()});
   x.worksheet={goal:clean($("#goalInput").value),conceptSummary:clean($("#conceptSummaryInput").value),safety:clean($("#safetyInput").value),
     steps:lines($("#stepsInput").value),observations:lines($("#observationsInput").value),questions:lines($("#questionsInput").value),teacherNote:clean($("#teacherNoteInput").value)};
-  $("#editorHeading").textContent=x.name; persist(); renderList(); $("#saveState").textContent="브라우저에 저장됨";
+  $("#editorHeading").textContent=x.name; persist(); renderList();
+  if (showMessage) $("#saveState").textContent="브라우저에 저장됨";
+  return true;
+}
+
+el.form.addEventListener("submit",e=>{
+  e.preventDefault();
+  saveEditor(true);
 });
 
 function persist(){localStorage.setItem(STORAGE_KEY,JSON.stringify(archive))}
@@ -158,11 +195,68 @@ function download(){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="experiment-archive.json";a.click();URL.revokeObjectURL(a.href);
 }
 
+function deleteExperiment(id) {
+  const x=archive.experiments.find(item=>item.id===id);
+  if (!x || !confirm(`‘${x.name || "이름 없는 실험"}’을 삭제하시겠습니까?\n동기화 전에는 브라우저 임시본에서만 삭제됩니다.`)) return;
+  archive.experiments=archive.experiments.filter(item=>item.id!==id);
+  if(selectedId===id){selectedId="";el.form.hidden=true;el.welcome.hidden=false}
+  persist();renderList();$("#saveState").textContent="삭제됨 · 동기화 필요";
+}
+
+function getSyncConfig() {
+  try {
+    const value=JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)||"null");
+    return value?.url && value?.key ? value : null;
+  } catch { return null; }
+}
+
+function configureSync() {
+  const current=getSyncConfig()||{};
+  const url=prompt("Apps Script 웹 앱 URL을 입력하세요.",current.url||"");
+  if(url===null)return null;
+  const key=prompt("Apps Script의 동기화 키를 입력하세요.",current.key||"");
+  if(key===null)return null;
+  const config={url:clean(url),key:clean(key)};
+  if(!config.url||!config.key){alert("웹 앱 URL과 동기화 키가 모두 필요합니다.");return null}
+  localStorage.setItem(SYNC_CONFIG_KEY,JSON.stringify(config));
+  $("#saveState").textContent="동기화 연결 설정됨";
+  return config;
+}
+
+async function syncArchive() {
+  if(!saveEditor(false))return;
+  const config=getSyncConfig()||configureSync();
+  if(!config)return;
+  const button=$("#syncButton");
+  button.disabled=true;button.textContent="동기화 중…";$("#saveState").textContent="백업 및 시트 갱신 중";
+  try {
+    archive.exportedAt=new Date().toISOString();
+    const response=await fetch(config.url,{
+      method:"POST",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({key:config.key,archive})
+    });
+    const result=await response.json();
+    if(!result.ok)throw new Error(result.message||"동기화에 실패했습니다.");
+    archive=normalizeArchive(result.archive||archive);persist();renderList();
+    $("#saveState").textContent=`동기화 완료 · 신규 ${result.recentCount||0}개`;
+    alert(`동기화가 완료되었습니다.\n백업: ${result.backupCount||0}개\n실험 마스터: ${archive.experiments.length}개\n최근 30일: ${result.recentCount||0}개`);
+  } catch(error) {
+    console.error(error);
+    $("#saveState").textContent="동기화 실패";
+    alert(`동기화하지 못했습니다.\n${error.message}\n\n배포 URL과 접근 권한을 확인해 주세요.`);
+  } finally {
+    button.disabled=false;button.textContent="동기화 및 백업";
+  }
+}
+
 $("#newButton").addEventListener("click",()=>newExperiment());
 $("#duplicateButton").addEventListener("click",()=>{const x=archive.experiments.find(v=>v.id===selectedId);if(x)newExperiment(x)});
 $("#addMaterialButton").addEventListener("click",()=>addMaterialRow());
 $("#exportButton").addEventListener("click",download);
+$("#syncButton").addEventListener("click",syncArchive);
+$("#syncSettingsButton").addEventListener("click",configureSync);
 $("#importInput").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{archive=normalizeArchive(JSON.parse(await f.text()));selectedId="";persist();el.form.hidden=true;el.welcome.hidden=false;renderList();$("#saveState").textContent="가져온 JSON";}catch{alert("올바른 JSON 파일이 아닙니다.");}e.target.value=""});
 [el.search,el.field,el.grade,el.difficulty,el.sort].forEach(x=>["input","change"].forEach(ev=>x.addEventListener(ev,renderList)));
-$$(".tab").forEach(b=>b.addEventListener("click",()=>{$$(".tab").forEach(x=>x.classList.toggle("active",x===b));$$(".tab-page").forEach(x=>x.classList.toggle("active",x.dataset.page===b.dataset.tab))}));
+document.addEventListener("click",event=>{if(!event.target.closest(".experiment-row"))$$(".item-menu").forEach(menu=>menu.hidden=true)});
 boot();
