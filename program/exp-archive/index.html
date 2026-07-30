@@ -2,8 +2,8 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#14213d">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#16233d">
   <title>실험 아카이브 | LAB NOTE</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,216 +12,91 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="../../index.html">
-      <span class="brand-mark">L</span>
-      <span><strong>LAB NOTE</strong><small>EXPERIMENT ARCHIVE</small></span>
-    </a>
-    <div class="topbar-actions">
-      <button class="quiet-button" id="exportButton" type="button">JSON 내보내기</button>
-      <label class="quiet-button file-button">JSON 가져오기<input id="importInput" type="file" accept=".json,application/json"></label>
-      <button class="primary-button" id="newButton" type="button">+ 새 실험</button>
+    <a class="brand" href="../../index.html"><span class="brand-mark">L</span><span><strong>LAB NOTE</strong><small>EXPERIMENT ARCHIVE</small></span></a>
+    <div class="top-actions">
+      <span class="save-state" id="saveState">JSON 불러오는 중</span>
+      <label class="button secondary">JSON 가져오기<input id="importInput" type="file" accept=".json,application/json"></label>
+      <button class="button secondary" id="exportButton">JSON 내려받기</button>
+      <button class="button primary" id="newButton">+ 새 실험</button>
     </div>
   </header>
 
-  <main class="workspace">
-    <aside class="sidebar">
+  <main class="app-shell">
+    <aside class="filter-panel">
       <a class="home-link" href="../../index.html">← 메인으로</a>
-      <nav aria-label="아카이브 메뉴">
-        <button class="nav-item active" type="button" data-view="all">
-          <span>전체 실험</span><b id="allCount">0</b>
-        </button>
-        <button class="nav-item" type="button" data-view="draft">
-          <span>계획 중</span><b id="draftCount">0</b>
-        </button>
-        <button class="nav-item" type="button" data-view="complete">
-          <span>완성</span><b id="completeCount">0</b>
-        </button>
-      </nav>
-      <div class="sidebar-info">
-        <strong>자료 저장 방식</strong>
-        <p>현재 입력 내용과 첨부 이미지는 이 브라우저에 저장됩니다.</p>
-        <span>Firebase 연결 전 테스트용</span>
-      </div>
+      <p class="panel-label">FILTER</p>
+      <label class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="실험명·개념·단원 검색"></label>
+      <label>분야<select id="fieldFilter"><option value="">전체 분야</option><option>물리</option><option>화학</option><option>생명</option><option>지구과학</option><option>수학</option><option>공학</option><option>예술</option></select></label>
+      <label>학년<select id="gradeFilter"><option value="">전체 학년</option><option>7세</option><option>1학년</option><option>2학년</option><option>3학년</option><option>4학년</option><option>5학년</option><option>6학년</option><option>중등</option><option>복수 학년</option></select></label>
+      <label>난이도<select id="difficultyFilter"><option value="">전체 난이도</option><option>매우 쉬움</option><option>쉬움</option><option>보통</option><option>어려움</option><option>매우 어려움</option></select></label>
+      <div class="stats"><span>검색 결과</span><strong id="resultCount">0</strong><small>전체 <b id="totalCount">0</b>개</small></div>
+      <div class="sync-note"><strong>동기화 순서</strong><p>수정 후 JSON을 내려받아 Drive 폴더에 같은 이름으로 올리고, 시트의 ‘JSON에서 시트 갱신’을 실행합니다.</p></div>
     </aside>
 
-    <section class="content">
-      <div class="page-heading">
-        <div>
-          <p class="eyebrow">EXPERIMENT DATABASE</p>
-          <h1>실험 아카이브</h1>
-          <p>기존 실험을 조회하고, 수정하거나 복제하여 새로운 실험을 계획합니다.</p>
+    <section class="list-panel">
+      <div class="list-head"><div><p class="eyebrow">EXPERIMENT DATABASE</p><h1>실험 아카이브</h1></div><select id="sortSelect"><option value="name">이름순</option><option value="code">코드순</option><option value="updated">최근 수정순</option></select></div>
+      <div class="experiment-list" id="experimentList"></div>
+      <div class="empty" id="emptyState" hidden>조건에 맞는 실험이 없습니다.</div>
+    </section>
+
+    <section class="detail-panel" id="detailPanel">
+      <div class="welcome" id="welcome">
+        <span class="welcome-mark">L</span><h2>실험을 선택하세요</h2>
+        <p>기존 실험지를 확인하고 내용을 바꾸거나 복제해 새 실험을 설계할 수 있습니다.</p>
+      </div>
+      <form id="editorForm" hidden>
+        <div class="editor-head">
+          <div><p class="eyebrow" id="editorMode">EXPERIMENT DETAIL</p><h2 id="editorHeading">실험 정보</h2></div>
+          <div class="editor-actions"><button type="button" class="button secondary" id="duplicateButton">복제하여 설계</button><button class="button primary">저장</button></div>
         </div>
-        <div class="summary">
-          <div><span>전체</span><strong id="summaryTotal">0</strong></div>
-          <div><span>계획 중</span><strong id="summaryDraft">0</strong></div>
-          <div><span>완성</span><strong id="summaryComplete">0</strong></div>
+        <input id="idInput" type="hidden">
+        <div class="tabs"><button type="button" class="tab active" data-tab="info">기본 정보</button><button type="button" class="tab" data-tab="design">실험지 설계</button></div>
+
+        <div class="tab-page active" data-page="info">
+          <section class="image-section">
+            <div class="image-stage" id="imageStage"><span>실험지 이미지 없음</span></div>
+            <div class="image-tabs" id="imageTabs"></div>
+          </section>
+          <section class="form-section">
+            <div class="form-grid">
+              <label class="wide">실험명<input id="nameInput" required></label>
+              <label>코드<input id="codeInput" placeholder="비워두면 자동 생성"></label>
+              <label>분야<select id="fieldInput"><option value="">선택</option><option>물리</option><option>화학</option><option>생명</option><option>지구과학</option><option>수학</option><option>공학</option><option>예술</option></select></label>
+              <label>세부 분야<input id="subfieldInput"></label>
+              <label>난이도<select id="difficultyInput"><option value="">미정</option><option>매우 쉬움</option><option>쉬움</option><option>보통</option><option>어려움</option><option>매우 어려움</option></select></label>
+              <label>대상<select id="targetInput"><option value="">미정</option><option>유아</option><option>초등</option><option>중등</option><option>복수 대상</option></select></label>
+              <label>학년<select id="gradeInput"><option value="">미정</option><option>7세</option><option>1학년</option><option>2학년</option><option>3학년</option><option>4학년</option><option>5학년</option><option>6학년</option><option>중등</option><option>복수 학년</option></select></label>
+              <label class="wide">2025 교과 연계<input id="curriculumInput"></label>
+              <label>연계 단원<input id="unitInput"></label>
+              <label>핵심 개념<input id="conceptInput"></label>
+            </div>
+          </section>
         </div>
-      </div>
 
-      <section class="toolbar" aria-label="검색과 필터">
-        <label class="search-box">
-          <span aria-hidden="true">⌕</span>
-          <input id="searchInput" type="search" placeholder="실험명, 코드, 준비물, 교과 단원 검색">
-        </label>
-        <select id="fieldFilter" aria-label="분야 필터">
-          <option value="">모든 분야</option>
-          <option>물리</option><option>화학</option><option>생명과학</option>
-          <option>지구과학</option><option>수학</option><option>공학</option><option>예술</option>
-        </select>
-        <select id="gradeFilter" aria-label="학년 필터">
-          <option value="">모든 단계</option>
-          <option>7세</option><option>1학년</option><option>2학년</option><option>3학년</option>
-          <option>4학년</option><option>5학년</option><option>6학년</option><option>중등</option>
-        </select>
-        <select id="difficultyFilter" aria-label="난이도 필터">
-          <option value="">모든 난이도</option>
-          <option>쉬움</option><option>보통</option><option>어려움</option>
-        </select>
-      </section>
-
-      <div class="result-line">
-        <p><strong id="resultCount">0</strong>개의 실험</p>
-        <select id="sortSelect" aria-label="정렬">
-          <option value="updated">최근 수정순</option>
-          <option value="name">이름순</option>
-          <option value="code">코드순</option>
-        </select>
-      </div>
-
-      <section class="experiment-grid" id="experimentGrid" aria-live="polite"></section>
-      <div class="empty-state" id="emptyState" hidden>
-        <strong>조건에 맞는 실험이 없습니다.</strong>
-        <p>검색어 또는 필터를 바꾸거나 새 실험을 등록하세요.</p>
-      </div>
+        <div class="tab-page" data-page="design">
+          <section class="form-section">
+            <div class="section-head"><div><h3>준비물</h3><p>수량과 구매 링크를 함께 관리합니다.</p></div><button type="button" class="mini-button" id="addMaterialButton">+ 추가</button></div>
+            <div class="materials" id="materialsList"></div>
+          </section>
+          <section class="form-section">
+            <div class="section-head"><div><h3>실험지 구성</h3><p>복제한 실험을 바탕으로 새 활동지를 설계합니다.</p></div></div>
+            <div class="form-grid">
+              <label class="wide">학습 목표<textarea id="goalInput" rows="2"></textarea></label>
+              <label class="wide">개념 설명<textarea id="conceptSummaryInput" rows="3"></textarea></label>
+              <label class="wide">안전 유의사항<textarea id="safetyInput" rows="2"></textarea></label>
+              <label class="wide">실험 과정<textarea id="stepsInput" rows="7" placeholder="한 줄에 한 단계씩 입력"></textarea></label>
+              <label>관찰·기록 항목<textarea id="observationsInput" rows="5" placeholder="한 줄에 한 항목씩 입력"></textarea></label>
+              <label>생각해 볼 질문<textarea id="questionsInput" rows="5" placeholder="한 줄에 한 질문씩 입력"></textarea></label>
+              <label class="wide">교사용 메모<textarea id="teacherNoteInput" rows="3"></textarea></label>
+            </div>
+          </section>
+        </div>
+      </form>
     </section>
   </main>
 
-  <dialog class="editor-dialog" id="editorDialog">
-    <form id="experimentForm">
-      <header class="dialog-header">
-        <div>
-          <p class="eyebrow" id="editorEyebrow">NEW EXPERIMENT</p>
-          <h2 id="editorTitle">새 실험 등록</h2>
-        </div>
-        <button class="close-button" id="closeButton" type="button" aria-label="닫기">×</button>
-      </header>
-
-      <div class="dialog-body">
-        <input id="experimentId" type="hidden">
-        <section class="form-section">
-          <div class="section-title">
-            <span>01</span>
-            <div><h3>기본 정보</h3><p>검색과 분류에 사용되는 핵심 정보입니다.</p></div>
-          </div>
-          <div class="form-grid">
-            <label class="field wide"><span>실험명 *</span><input id="nameInput" required maxlength="80" placeholder="예: 물속에서 피어나는 색"></label>
-            <label class="field"><span>실험 코드</span><input id="codeInput" placeholder="비워두면 자동 생성"></label>
-            <label class="field"><span>대표 분야 *</span>
-              <select id="categoryInput" required>
-                <option value="">선택</option>
-                <option>물리</option><option>화학</option><option>생명과학</option>
-                <option>지구과학</option><option>수학</option><option>공학</option><option>예술</option>
-              </select>
-            </label>
-            <label class="field"><span>권장 단계 *</span>
-              <select id="gradeInput" required>
-                <option value="">선택</option><option>7세</option><option>1학년</option><option>2학년</option>
-                <option>3학년</option><option>4학년</option><option>5학년</option><option>6학년</option><option>중등</option>
-              </select>
-            </label>
-            <label class="field"><span>난이도 *</span>
-              <select id="difficultyInput" required><option value="">선택</option><option>쉬움</option><option>보통</option><option>어려움</option></select>
-            </label>
-            <label class="field"><span>상태</span>
-              <select id="statusInput"><option>계획 중</option><option>완성</option></select>
-            </label>
-            <label class="field wide"><span>연계 교과 단원</span><input id="curriculumInput" placeholder="예: 초-5-2-Ⅲ 열과 우리 생활"></label>
-            <label class="field wide"><span>실험 설명</span><textarea id="descriptionInput" rows="3" placeholder="핵심 원리와 활동 내용을 간략히 기록하세요."></textarea></label>
-          </div>
-        </section>
-
-        <section class="form-section">
-          <div class="section-title">
-            <span>02</span>
-            <div><h3>실험지 이미지</h3><p>기존 이미지 파일을 확인하거나 새 시안을 첨부합니다.</p></div>
-          </div>
-          <div class="image-editor">
-            <div class="image-preview" id="imagePreview">
-              <span>이미지 없음</span>
-            </div>
-            <div class="image-actions">
-              <label class="upload-button">이미지 선택<input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp"></label>
-              <button class="quiet-button" id="removeImageButton" type="button">이미지 제거</button>
-              <p>PNG, JPG, WEBP / 테스트 단계에서는 브라우저에 저장됩니다.</p>
-              <label class="field"><span>기존 data 폴더 파일명</span><input id="localImageInput" placeholder="예: 사이펀의 원리.png"></label>
-            </div>
-          </div>
-        </section>
-
-        <section class="form-section">
-          <div class="section-title">
-            <span>03</span>
-            <div><h3>준비물</h3><p>수량과 구매 링크를 함께 저장할 수 있습니다.</p></div>
-          </div>
-          <div class="materials-editor">
-            <div class="materials-head"><span>준비물</span><span>수량</span><span>구매 링크</span><span></span></div>
-            <div id="materialsList"></div>
-            <button class="add-line-button" id="addMaterialButton" type="button">+ 준비물 추가</button>
-          </div>
-        </section>
-
-        <section class="form-section">
-          <div class="section-title">
-            <span>04</span>
-            <div><h3>기본 실험지 구성</h3><p>새 실험지를 만들 때 필요한 내용을 순서대로 작성합니다.</p></div>
-          </div>
-          <div class="sheet-grid">
-            <label class="field"><span>학습 목표</span><textarea id="goalInput" rows="3"></textarea></label>
-            <label class="field"><span>안전 유의 사항</span><textarea id="safetyInput" rows="3"></textarea></label>
-            <label class="field wide"><span>실험 과정</span><textarea id="procedureInput" rows="6" placeholder="1.&#10;2.&#10;3."></textarea></label>
-            <label class="field"><span>관찰·기록</span><textarea id="observationInput" rows="4"></textarea></label>
-            <label class="field"><span>생각해 볼 질문</span><textarea id="questionInput" rows="4"></textarea></label>
-            <label class="field wide"><span>교사용 메모</span><textarea id="teacherNoteInput" rows="3"></textarea></label>
-          </div>
-        </section>
-      </div>
-
-      <footer class="dialog-footer">
-        <button class="danger-button" id="deleteButton" type="button" hidden>삭제</button>
-        <div>
-          <button class="quiet-button" id="cancelButton" type="button">취소</button>
-          <button class="primary-button" type="submit">저장</button>
-        </div>
-      </footer>
-    </form>
-  </dialog>
-
-  <template id="materialTemplate">
-    <div class="material-row">
-      <input class="material-name" placeholder="준비물명">
-      <input class="material-quantity" placeholder="예: 2개">
-      <input class="material-link" type="url" placeholder="https://">
-      <button class="remove-line-button" type="button" aria-label="준비물 삭제">×</button>
-    </div>
-  </template>
-
-  <template id="cardTemplate">
-    <article class="experiment-card">
-      <div class="card-image"></div>
-      <div class="card-body">
-        <div class="card-topline"><span class="code"></span><span class="state"></span></div>
-        <h3></h3>
-        <p class="card-description"></p>
-        <div class="tag-line"></div>
-        <p class="curriculum"></p>
-        <div class="card-footer">
-          <button class="text-button edit-action" type="button">내용 수정</button>
-          <button class="text-button duplicate-action" type="button">복제하여 계획</button>
-        </div>
-      </div>
-    </article>
-  </template>
-
+  <template id="listItemTemplate"><button class="experiment-item" type="button"><span class="thumb"></span><span class="item-copy"><small class="item-code"></small><strong class="item-name"></strong><span class="item-meta"></span></span><span class="arrow">›</span></button></template>
+  <template id="materialTemplate"><div class="material-row"><input class="material-name" placeholder="준비물"><input class="material-quantity" placeholder="수량"><input class="material-link" type="url" placeholder="구매 링크"><button type="button" class="remove-material">×</button></div></template>
   <script type="module" src="./app.js"></script>
 </body>
 </html>
