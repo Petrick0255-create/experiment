@@ -106,9 +106,19 @@
   <template id="libraryCardTemplate">
     <article class="experiment-card library-card" draggable="true">
       <div class="card-body">
-        <span class="card-code"></span>
+        <div class="card-topline">
+          <span class="card-code"></span>
+          <span class="card-grade"></span>
+        </div>
         <strong class="card-title"></strong>
-        <span class="card-meta"></span>
+        <div class="card-tags">
+          <span class="card-field"></span>
+          <span class="card-difficulty"></span>
+        </div>
+        <div class="card-curriculum">
+          <small>교과 연계</small>
+          <span></span>
+        </div>
       </div>
       <button class="select-card" type="button">배치 선택</button>
       <span class="used-badge">배치됨</span>
@@ -118,9 +128,19 @@
   <template id="placedCardTemplate">
     <article class="experiment-card placed-card" draggable="true">
       <div class="card-body">
-        <span class="card-code"></span>
+        <div class="card-topline">
+          <span class="card-code"></span>
+          <span class="card-grade"></span>
+        </div>
         <strong class="card-title"></strong>
-        <span class="card-meta"></span>
+        <div class="card-tags">
+          <span class="card-field"></span>
+          <span class="card-difficulty"></span>
+        </div>
+        <div class="card-curriculum">
+          <small>교과 연계</small>
+          <span></span>
+        </div>
       </div>
       <button class="remove-card" type="button" aria-label="배치에서 제거">×</button>
     </article>

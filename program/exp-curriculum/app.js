@@ -163,7 +163,10 @@ function filteredExperiments(){
 function fillCard(card,item){
   $(".card-code",card).textContent=item.code||item.id;
   $(".card-title",card).textContent=item.name;
-  $(".card-meta",card).textContent=[item.field,item.difficulty].filter(Boolean).join(" · ")||"분류 미입력";
+  $(".card-grade",card).textContent=item.grade||"학년 미정";
+  $(".card-field",card).textContent=item.field||"분야 미정";
+  $(".card-difficulty",card).textContent=item.difficulty||"난이도 미정";
+  $(".card-curriculum span",card).textContent=item.curriculum2025||item.unit||"교과 연계 미입력";
   attachPreviewEvents(card,item);
 }
 
