@@ -1,6 +1,7 @@
 const ARCHIVE_STORAGE_KEY="experiment-archive-working-v2";
 const STORAGE_KEY="experiment-curriculum-v2";
 const LEGACY_STORAGE_KEY="experiment-curriculum-v1";
+const PANEL_WIDTH_KEY="experiment-curriculum-library-width";
 const GRADES=["7세","1학년","2학년","3학년","4학년","5학년","6학년","중등"];
 const MONTHS=Array.from({length:12},(_,i)=>i+1);
 const WEEKS=[1,2,3,4];
@@ -88,12 +89,65 @@ function getSlots(year,grade,month,week){
 function boot(){
   $("#yearInput").value=new Date().getFullYear();
   $("#slotCountSelect").value=String(state.slotCount||2);
+  setupPanelResizer();
   buildGradeTabs();
   bindEvents();
   loadArchiveFromStorage(false);
   if(!experiments.length){
     $("#saveState").textContent="아카이브 페이지에서 JSON을 먼저 가져오세요";
   }
+}
+
+function panelWidthBounds(){
+  return{min:280,max:Math.max(280,Math.min(620,window.innerWidth-760))};
+}
+
+function setPanelWidth(width,save=false){
+  const bounds=panelWidthBounds();
+  const next=Math.round(Math.max(bounds.min,Math.min(bounds.max,Number(width)||350)));
+  document.documentElement.style.setProperty("--library-width",`${next}px`);
+  $("#panelResizer").setAttribute("aria-valuenow",String(next));
+  $("#panelResizer").setAttribute("aria-valuemin",String(bounds.min));
+  $("#panelResizer").setAttribute("aria-valuemax",String(bounds.max));
+  if(save)localStorage.setItem(PANEL_WIDTH_KEY,String(next));
+}
+
+function setupPanelResizer(){
+  const resizer=$("#panelResizer");
+  setPanelWidth(localStorage.getItem(PANEL_WIDTH_KEY)||350);
+  let startX=0,startWidth=0;
+  resizer.addEventListener("pointerdown",event=>{
+    if(window.innerWidth<=760)return;
+    startX=event.clientX;
+    startWidth=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--library-width"))||350;
+    resizer.setPointerCapture(event.pointerId);
+    resizer.classList.add("dragging");
+    document.body.classList.add("resizing-panel");
+  });
+  resizer.addEventListener("pointermove",event=>{
+    if(!resizer.hasPointerCapture(event.pointerId))return;
+    setPanelWidth(startWidth+event.clientX-startX);
+  });
+  const finish=event=>{
+    if(!resizer.hasPointerCapture(event.pointerId))return;
+    resizer.releasePointerCapture(event.pointerId);
+    resizer.classList.remove("dragging");
+    document.body.classList.remove("resizing-panel");
+    const width=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--library-width"))||350;
+    setPanelWidth(width,true);
+  };
+  resizer.addEventListener("pointerup",finish);
+  resizer.addEventListener("pointercancel",finish);
+  resizer.addEventListener("keydown",event=>{
+    if(!["ArrowLeft","ArrowRight"].includes(event.key))return;
+    event.preventDefault();
+    const width=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--library-width"))||350;
+    setPanelWidth(width+(event.key==="ArrowRight"?20:-20),true);
+  });
+  window.addEventListener("resize",()=>{
+    const width=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--library-width"))||350;
+    setPanelWidth(width);
+  });
 }
 
 function buildGradeTabs(){
