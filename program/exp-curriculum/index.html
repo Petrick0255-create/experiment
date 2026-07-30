@@ -68,10 +68,6 @@
       <div class="empty-library" id="emptyLibrary" hidden>조건에 맞는 실험이 없습니다.</div>
     </aside>
 
-    <div class="panel-resizer" id="panelResizer" role="separator" aria-label="실험 카드 패널 너비 조절" aria-orientation="vertical" tabindex="0">
-      <span></span>
-    </div>
-
     <section class="curriculum-panel">
       <div class="curriculum-head">
         <div>
@@ -115,7 +111,7 @@
           <span class="card-grade"></span>
         </div>
         <strong class="card-title"></strong>
-        <div class="card-tags">
+        <div class="card-meta-row">
           <span class="card-field"></span>
           <span class="card-difficulty"></span>
         </div>
@@ -124,7 +120,7 @@
           <span></span>
         </div>
       </div>
-      <button class="select-card" type="button">배치 선택</button>
+      <button class="select-card" type="button" aria-label="배치할 실험 선택">＋</button>
       <span class="used-badge">배치됨</span>
     </article>
   </template>
@@ -137,7 +133,7 @@
           <span class="card-grade"></span>
         </div>
         <strong class="card-title"></strong>
-        <div class="card-tags">
+        <div class="card-meta-row">
           <span class="card-field"></span>
           <span class="card-difficulty"></span>
         </div>
