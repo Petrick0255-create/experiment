@@ -2,31 +2,123 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#16233d">
   <title>커리큘럼 설계 | LAB NOTE</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../../style.css">
-  <style>
-    .sub-page{min-height:100vh;padding:80px 24px;background:linear-gradient(135deg,#fff3e8,#fff)}
-    .sub-wrap{width:min(900px,100%);margin:auto}.back{font-weight:800;color:#e66c16}
-    .sub-card{margin-top:40px;padding:clamp(34px,7vw,70px);border:1px solid #f1ded0;border-radius:32px;background:#fff;box-shadow:0 24px 70px rgba(150,73,22,.12)}
-    .sub-card h1{margin:10px 0 18px;font-size:clamp(40px,7vw,72px);letter-spacing:-.06em}.sub-card p{color:#66758c;line-height:1.8}
-    .soon{display:inline-block;margin-top:25px;padding:12px 16px;border-radius:999px;color:#d66414;background:#fff0e4;font-weight:800}
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <main class="sub-page">
-    <div class="sub-wrap">
-      <a class="back" href="../../index.html">← LAB NOTE 홈</a>
-      <section class="sub-card">
-        <p class="eyebrow" style="color:#e66c16">CURRICULUM BUILDER</p>
-        <h1>커리큘럼 설계</h1>
-        <p>연도, 월, 주차, 학년별로 실험을 배치하고 준비물을 확인하는 페이지가 들어갈 자리입니다.</p>
-        <span class="soon">기능 준비 중</span>
-      </section>
+  <header class="topbar">
+    <a class="brand" href="../../index.html">
+      <span class="brand-mark">L</span>
+      <span><strong>LAB NOTE</strong><small>CURRICULUM BUILDER</small></span>
+    </a>
+    <div class="top-actions">
+      <span class="save-state" id="saveState">실험 목록 불러오는 중</span>
+      <button class="button secondary" id="importButton">배치 불러오기</button>
+      <input id="importInput" type="file" accept=".json,application/json" hidden>
+      <button class="button secondary" id="exportButton">배치 내려받기</button>
+      <button class="button danger" id="resetButton">현재 연도 초기화</button>
     </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="library-panel">
+      <div class="library-head">
+        <a href="../../index.html">← 메인으로</a>
+        <p class="eyebrow">EXPERIMENT DECK</p>
+        <h1>실험 카드</h1>
+        <p>카드를 끌어 원하는 주차에 놓으세요.</p>
+      </div>
+
+      <div class="filters">
+        <label class="search">
+          <span>⌕</span>
+          <input id="searchInput" type="search" placeholder="실험명·코드·단원 검색">
+        </label>
+        <div class="filter-row">
+          <select id="fieldFilter" aria-label="분야">
+            <option value="">전체 분야</option>
+            <option>물리</option><option>화학</option><option>생명</option>
+            <option>지구과학</option><option>수학</option><option>공학</option><option>예술</option>
+          </select>
+          <select id="difficultyFilter" aria-label="난이도">
+            <option value="">전체 난이도</option>
+            <option>매우 쉬움</option><option>쉬움</option><option>보통</option>
+            <option>어려움</option><option>매우 어려움</option>
+          </select>
+        </div>
+        <div class="library-count">
+          <span>검색 결과 <b id="resultCount">0</b>개</span>
+          <span>배치 완료 <b id="assignedCount">0</b>개</span>
+        </div>
+      </div>
+
+      <div class="selected-guide" id="selectedGuide" hidden>
+        <span>선택한 카드</span>
+        <strong id="selectedName"></strong>
+        <button id="cancelSelection" type="button">선택 취소</button>
+      </div>
+
+      <div class="experiment-library" id="experimentLibrary"></div>
+      <div class="empty-library" id="emptyLibrary" hidden>조건에 맞는 실험이 없습니다.</div>
+    </aside>
+
+    <section class="curriculum-panel">
+      <div class="curriculum-head">
+        <div>
+          <p class="eyebrow">ANNUAL CURRICULUM</p>
+          <h2><span id="headingGrade">7세</span> 연간 커리큘럼</h2>
+        </div>
+        <div class="plan-controls">
+          <label>연도<input id="yearInput" type="number" min="2020" max="2100" value="2026"></label>
+          <label>주당 실험<select id="slotCountSelect"><option value="2">2개</option><option value="1">1개</option></select></label>
+          <div class="annual-stat"><span>연간 배치</span><strong id="annualCount">0</strong><small id="annualCapacity">/ 96</small></div>
+        </div>
+      </div>
+
+      <nav class="grade-tabs" id="gradeTabs" aria-label="학년 선택"></nav>
+      <nav class="month-tabs" id="monthTabs" aria-label="월 선택"></nav>
+
+      <div class="board-heading">
+        <div>
+          <span id="boardYear">2026년</span>
+          <h3><b id="boardMonth">1월</b> 프로그램</h3>
+        </div>
+        <p>같은 연도 안에서 동일한 실험은 한 번만 배치할 수 있습니다.</p>
+      </div>
+
+      <div class="week-board" id="weekBoard"></div>
+    </section>
   </main>
+
+  <template id="libraryCardTemplate">
+    <article class="experiment-card library-card" draggable="true">
+      <div class="card-image"></div>
+      <div class="card-body">
+        <span class="card-code"></span>
+        <strong class="card-title"></strong>
+        <span class="card-meta"></span>
+      </div>
+      <span class="used-badge">배치됨</span>
+    </article>
+  </template>
+
+  <template id="placedCardTemplate">
+    <article class="experiment-card placed-card" draggable="true">
+      <div class="card-image"></div>
+      <div class="card-body">
+        <span class="card-code"></span>
+        <strong class="card-title"></strong>
+        <span class="card-meta"></span>
+      </div>
+      <button class="remove-card" type="button" aria-label="배치에서 제거">×</button>
+    </article>
+  </template>
+
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
