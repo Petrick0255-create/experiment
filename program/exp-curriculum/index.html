@@ -18,6 +18,7 @@
     </a>
     <div class="top-actions">
       <span class="save-state" id="saveState">실험 목록 불러오는 중</span>
+      <button class="button secondary" id="reloadArchiveButton">아카이브 새로고침</button>
       <button class="button secondary" id="importButton">배치 불러오기</button>
       <input id="importInput" type="file" accept=".json,application/json" hidden>
       <button class="button secondary" id="exportButton">배치 내려받기</button>
@@ -81,12 +82,19 @@
       </div>
 
       <nav class="grade-tabs" id="gradeTabs" aria-label="학년 선택"></nav>
-      <nav class="month-tabs" id="monthTabs" aria-label="월 선택"></nav>
+      <div class="period-controls">
+        <nav class="view-tabs" id="viewTabs" aria-label="보기 범위">
+          <button type="button" data-view="month" class="active">월별</button>
+          <button type="button" data-view="quarter">3개월</button>
+          <button type="button" data-view="year">1년</button>
+        </nav>
+        <nav class="month-tabs" id="monthTabs" aria-label="월 또는 분기 선택"></nav>
+      </div>
 
       <div class="board-heading">
         <div>
           <span id="boardYear">2026년</span>
-          <h3><b id="boardMonth">1월</b> 프로그램</h3>
+          <h3><b id="boardPeriod">1월</b> 프로그램</h3>
         </div>
         <p>같은 연도 안에서 동일한 실험은 한 번만 배치할 수 있습니다.</p>
       </div>
@@ -97,19 +105,18 @@
 
   <template id="libraryCardTemplate">
     <article class="experiment-card library-card" draggable="true">
-      <div class="card-image"></div>
       <div class="card-body">
         <span class="card-code"></span>
         <strong class="card-title"></strong>
         <span class="card-meta"></span>
       </div>
+      <button class="select-card" type="button">배치 선택</button>
       <span class="used-badge">배치됨</span>
     </article>
   </template>
 
   <template id="placedCardTemplate">
     <article class="experiment-card placed-card" draggable="true">
-      <div class="card-image"></div>
       <div class="card-body">
         <span class="card-code"></span>
         <strong class="card-title"></strong>
@@ -118,6 +125,20 @@
       <button class="remove-card" type="button" aria-label="배치에서 제거">×</button>
     </article>
   </template>
+
+  <div class="hover-preview" id="hoverPreview" hidden>
+    <img id="hoverPreviewImage" alt="">
+    <span id="hoverPreviewEmpty">실험지 이미지 없음</span>
+  </div>
+
+  <dialog class="image-modal" id="imageModal">
+    <div class="modal-head">
+      <div><span id="modalCode"></span><strong id="modalTitle"></strong></div>
+      <button id="closeImageModal" type="button" aria-label="닫기">×</button>
+    </div>
+    <div class="modal-image-stage" id="modalImageStage"></div>
+    <div class="modal-image-tabs" id="modalImageTabs"></div>
+  </dialog>
 
   <script type="module" src="./app.js"></script>
 </body>

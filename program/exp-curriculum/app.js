@@ -1,5 +1,6 @@
-const ARCHIVE_URL="../exp-archive/experiment-archive.json";
-const STORAGE_KEY="experiment-curriculum-v1";
+const ARCHIVE_STORAGE_KEY="experiment-archive-working-v2";
+const STORAGE_KEY="experiment-curriculum-v2";
+const LEGACY_STORAGE_KEY="experiment-curriculum-v1";
 const GRADES=["7세","1학년","2학년","3학년","4학년","5학년","6학년","중등"];
 const MONTHS=Array.from({length:12},(_,i)=>i+1);
 const WEEKS=[1,2,3,4];
@@ -13,16 +14,18 @@ let experimentById=new Map();
 let state=loadState();
 let currentGrade="7세";
 let currentMonth=1;
+let viewMode="month";
 let selectedExperimentId="";
+let modalExperiment=null;
+let modalImageIndex=0;
+let hoverTimer=0;
 
-function defaultState(){
-  return{version:1,slotCount:2,plans:{}};
-}
+function defaultState(){return{version:2,slotCount:2,plans:{}}}
 
 function loadState(){
   try{
-    const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null");
-    return saved&&saved.plans?{...defaultState(),...saved}:defaultState();
+    const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||localStorage.getItem(LEGACY_STORAGE_KEY)||"null");
+    return saved?.plans?{...defaultState(),...saved}:defaultState();
   }catch{return defaultState()}
 }
 
@@ -31,8 +34,41 @@ function persist(message="자동 저장됨"){
   $("#saveState").textContent=message;
 }
 
-function currentYear(){
-  return String($("#yearInput").value||new Date().getFullYear());
+function currentYear(){return String($("#yearInput").value||new Date().getFullYear())}
+
+function normalizeArchive(raw){
+  const base=Array.isArray(raw)?{experiments:raw}:raw||{};
+  return(base.experiments||[]).map(item=>({
+    ...item,
+    id:clean(item.id),
+    code:clean(item.code),
+    name:clean(item.name||item.실험명),
+    field:clean(item.field||item.분야),
+    subfield:clean(item.subfield),
+    difficulty:clean(item.difficulty),
+    grade:clean(item.grade),
+    images:Array.isArray(item.images)?item.images:[]
+  })).filter(item=>item.id&&item.name);
+}
+
+function loadArchiveFromStorage(showAlert=true){
+  try{
+    const raw=localStorage.getItem(ARCHIVE_STORAGE_KEY);
+    if(!raw)throw new Error("저장된 아카이브 JSON이 없습니다.");
+    const next=normalizeArchive(JSON.parse(raw));
+    if(!next.length)throw new Error("저장된 아카이브에 실험이 없습니다.");
+    experiments=next;
+    experimentById=new Map(experiments.map(item=>[item.id,item]));
+    $("#saveState").textContent=`아카이브 JSON ${experiments.length}개`;
+    renderAll();
+    return true;
+  }catch(error){
+    experiments=[];experimentById=new Map();
+    $("#saveState").textContent="아카이브 JSON 필요";
+    renderAll();
+    if(showAlert)alert(`${error.message}\n\n먼저 실험 아카이브 페이지에서 JSON 가져오기를 한 번 실행해 주세요.`);
+    return false;
+  }
 }
 
 function ensureSlots(year,grade,month,week){
@@ -49,47 +85,66 @@ function getSlots(year,grade,month,week){
   return state.plans?.[year]?.[grade]?.[month]?.[week]||[null,null];
 }
 
-async function boot(){
+function boot(){
   $("#yearInput").value=new Date().getFullYear();
   $("#slotCountSelect").value=String(state.slotCount||2);
-  buildTabs();
-  try{
-    const response=await fetch(ARCHIVE_URL,{cache:"no-store"});
-    if(!response.ok)throw new Error("실험 JSON을 찾지 못했습니다.");
-    const data=await response.json();
-    experiments=(data.experiments||[]).filter(item=>item.id&&item.name);
-    experimentById=new Map(experiments.map(item=>[item.id,item]));
-    $("#saveState").textContent=`실험 ${experiments.length}개 준비됨`;
-  }catch(error){
-    $("#saveState").textContent="실험 목록 불러오기 실패";
-    alert(`${error.message}\nexp-archive 폴더의 experiment-archive.json 위치를 확인해 주세요.`);
+  buildGradeTabs();
+  bindEvents();
+  loadArchiveFromStorage(false);
+  if(!experiments.length){
+    $("#saveState").textContent="아카이브 페이지에서 JSON을 먼저 가져오세요";
   }
-  renderAll();
 }
 
-function buildTabs(){
-  const gradeTabs=$("#gradeTabs");
+function buildGradeTabs(){
   GRADES.forEach(grade=>{
     const button=document.createElement("button");
     button.type="button";button.textContent=grade;button.dataset.grade=grade;
     button.addEventListener("click",()=>{currentGrade=grade;renderAll()});
-    gradeTabs.append(button);
+    $("#gradeTabs").append(button);
   });
-  const monthTabs=$("#monthTabs");
-  MONTHS.forEach(month=>{
+}
+
+function visibleMonths(){
+  if(viewMode==="year")return MONTHS;
+  if(viewMode==="quarter"){
+    const first=Math.floor((currentMonth-1)/3)*3+1;
+    return[first,first+1,first+2];
+  }
+  return[currentMonth];
+}
+
+function buildPeriodTabs(){
+  const tabs=$("#monthTabs");
+  tabs.innerHTML="";
+  if(viewMode==="year"){
+    tabs.hidden=true;
+    return;
+  }
+  tabs.hidden=false;
+  const values=viewMode==="quarter"?[1,4,7,10]:MONTHS;
+  values.forEach(value=>{
     const button=document.createElement("button");
-    button.type="button";button.textContent=`${month}월`;button.dataset.month=month;
-    button.addEventListener("click",()=>{currentMonth=month;renderAll()});
-    monthTabs.append(button);
+    button.type="button";
+    button.dataset.month=value;
+    button.textContent=viewMode==="quarter"?`${Math.floor((value-1)/3)+1}분기`:`${value}월`;
+    const active=viewMode==="quarter"
+      ?Math.floor((currentMonth-1)/3)===Math.floor((value-1)/3)
+      :currentMonth===value;
+    button.classList.toggle("active",active);
+    button.addEventListener("click",()=>{currentMonth=value;renderAll()});
+    tabs.append(button);
   });
 }
 
 function renderAll(){
   $$("#gradeTabs button").forEach(button=>button.classList.toggle("active",button.dataset.grade===currentGrade));
-  $$("#monthTabs button").forEach(button=>button.classList.toggle("active",Number(button.dataset.month)===currentMonth));
+  $$("#viewTabs button").forEach(button=>button.classList.toggle("active",button.dataset.view===viewMode));
+  buildPeriodTabs();
   $("#headingGrade").textContent=currentGrade;
   $("#boardYear").textContent=`${currentYear()}년`;
-  $("#boardMonth").textContent=`${currentMonth}월`;
+  const months=visibleMonths();
+  $("#boardPeriod").textContent=viewMode==="year"?"연간":viewMode==="quarter"?`${Math.floor((months[0]-1)/3)+1}분기`:`${currentMonth}월`;
   renderLibrary();
   renderBoard();
   renderStats();
@@ -100,22 +155,84 @@ function filteredExperiments(){
   const field=$("#fieldFilter").value;
   const difficulty=$("#difficultyFilter").value;
   return experiments.filter(item=>{
-    const haystack=[item.name,item.code,item.field,item.subfield,item.grade,item.curriculum2025,item.unit,item.coreConcepts]
-      .join(" ").toLowerCase();
+    const haystack=[item.name,item.code,item.field,item.subfield,item.grade,item.curriculum2025,item.unit,item.coreConcepts].join(" ").toLowerCase();
     return(!query||haystack.includes(query))&&(!field||item.field===field)&&(!difficulty||item.difficulty===difficulty);
   }).sort((a,b)=>a.name.localeCompare(b.name,"ko"));
 }
 
-function imageMarkup(item){
-  const image=item.images?.[0];
-  return image?`<img src="${escapeHtml(image.thumbnailUrl||image.viewUrl)}" alt="">`:`<b>${escapeHtml(item.field?.[0]||"L")}</b>`;
-}
-
 function fillCard(card,item){
-  $(".card-image",card).innerHTML=imageMarkup(item);
   $(".card-code",card).textContent=item.code||item.id;
   $(".card-title",card).textContent=item.name;
   $(".card-meta",card).textContent=[item.field,item.difficulty].filter(Boolean).join(" · ")||"분류 미입력";
+  attachPreviewEvents(card,item);
+}
+
+function attachPreviewEvents(card,item){
+  card.addEventListener("mouseenter",event=>{
+    clearTimeout(hoverTimer);
+    hoverTimer=setTimeout(()=>showHoverPreview(item,event.currentTarget),180);
+  });
+  card.addEventListener("mouseleave",()=>{
+    clearTimeout(hoverTimer);
+    $("#hoverPreview").hidden=true;
+  });
+  card.addEventListener("mousemove",positionHoverPreview);
+}
+
+function showHoverPreview(item,anchor){
+  const preview=$("#hoverPreview");
+  const image=item.images?.[0];
+  $("#hoverPreviewImage").hidden=!image;
+  $("#hoverPreviewEmpty").hidden=!!image;
+  if(image){
+    $("#hoverPreviewImage").src=image.thumbnailUrl||image.viewUrl;
+    $("#hoverPreviewImage").alt=`${item.name} 미리보기`;
+  }
+  preview.hidden=false;
+  const rect=anchor.getBoundingClientRect();
+  positionHoverPreview({clientX:Math.min(rect.right+8,window.innerWidth-20),clientY:rect.top+20});
+}
+
+function positionHoverPreview(event){
+  const preview=$("#hoverPreview");
+  if(preview.hidden)return;
+  const width=260,height=Math.min(380,window.innerHeight-30);
+  let left=event.clientX+16,top=event.clientY-40;
+  if(left+width>window.innerWidth-12)left=event.clientX-width-18;
+  top=Math.max(12,Math.min(top,window.innerHeight-height-12));
+  preview.style.left=`${left}px`;preview.style.top=`${top}px`;
+}
+
+function openImageModal(item,index=0){
+  modalExperiment=item;modalImageIndex=index;
+  $("#modalCode").textContent=item.code||item.id;
+  $("#modalTitle").textContent=item.name;
+  renderModalImage();
+  $("#imageModal").showModal();
+}
+
+function renderModalImage(){
+  const images=modalExperiment?.images||[];
+  const stage=$("#modalImageStage");
+  const tabs=$("#modalImageTabs");
+  stage.innerHTML="";tabs.innerHTML="";
+  if(!images.length){
+    stage.innerHTML="<span>실험지 이미지가 없습니다.</span>";
+    return;
+  }
+  modalImageIndex=Math.min(modalImageIndex,images.length-1);
+  const current=images[modalImageIndex];
+  const img=document.createElement("img");
+  img.src=current.thumbnailUrl||current.viewUrl;
+  img.alt=`${modalExperiment.name} 실험지 ${modalImageIndex+1}`;
+  stage.append(img);
+  images.forEach((image,index)=>{
+    const button=document.createElement("button");
+    button.type="button";button.textContent=`${image.page||index+1}쪽`;
+    button.classList.toggle("active",index===modalImageIndex);
+    button.addEventListener("click",()=>{modalImageIndex=index;renderModalImage()});
+    tabs.append(button);
+  });
 }
 
 function renderLibrary(){
@@ -131,13 +248,18 @@ function renderLibrary(){
     card.classList.toggle("used",assigned.has(item.id));
     card.classList.toggle("selected",selectedExperimentId===item.id);
     card.addEventListener("dragstart",event=>{
+      if(assigned.has(item.id)){event.preventDefault();return}
       event.dataTransfer.effectAllowed="copy";
       event.dataTransfer.setData("text/plain",JSON.stringify({type:"library",experimentId:item.id}));
     });
-    card.addEventListener("click",()=>{
+    card.addEventListener("click",event=>{
+      if(event.target.closest(".select-card"))return;
+      openImageModal(item);
+    });
+    $(".select-card",card).addEventListener("click",event=>{
+      event.stopPropagation();
       if(assigned.has(item.id)){
-        const location=findAssignment(item.id,currentYear());
-        alert(`이미 ${formatLocation(location)}에 배치되어 있습니다.`);
+        alert(`이미 ${formatLocation(findAssignment(item.id,currentYear()))}에 배치되어 있습니다.`);
         return;
       }
       selectedExperimentId=selectedExperimentId===item.id?"":item.id;
@@ -159,46 +281,50 @@ function renderSelection(){
 function renderBoard(){
   const board=$("#weekBoard");
   const year=currentYear();
+  const months=visibleMonths();
   board.innerHTML="";
-  WEEKS.forEach(week=>{
-    const column=document.createElement("section");
-    column.className="week-column";
-    column.innerHTML=`<div class="week-head"><strong>${week}주</strong><span>${state.slotCount}개 프로그램</span></div><div class="slot-list"></div>`;
-    const slotList=$(".slot-list",column);
-    for(let slotIndex=0;slotIndex<state.slotCount;slotIndex++){
-      slotList.append(createSlot(year,currentGrade,currentMonth,week,slotIndex));
-    }
-    board.append(column);
+  board.dataset.view=viewMode;
+  months.forEach(month=>{
+    const monthSection=document.createElement("section");
+    monthSection.className="month-board";
+    monthSection.innerHTML=`<div class="month-heading"><strong>${month}월</strong><span>${WEEKS.reduce((n,w)=>n+getSlots(year,currentGrade,month,w).slice(0,state.slotCount).filter(Boolean).length,0)} / ${4*state.slotCount}</span></div><div class="month-weeks"></div>`;
+    const monthWeeks=$(".month-weeks",monthSection);
+    WEEKS.forEach(week=>{
+      const column=document.createElement("section");
+      column.className="week-column";
+      column.innerHTML=`<div class="week-head"><strong>${week}주</strong><span>${state.slotCount}개</span></div><div class="slot-list"></div>`;
+      const slotList=$(".slot-list",column);
+      for(let slotIndex=0;slotIndex<state.slotCount;slotIndex++){
+        slotList.append(createSlot(year,currentGrade,month,week,slotIndex));
+      }
+      monthWeeks.append(column);
+    });
+    board.append(monthSection);
   });
 }
 
 function createSlot(year,grade,month,week,slotIndex){
   const slot=document.createElement("div");
   slot.className="experiment-slot";
-  slot.dataset.year=year;slot.dataset.grade=grade;slot.dataset.month=month;
-  slot.dataset.week=week;slot.dataset.slot=slotIndex;
+  Object.assign(slot.dataset,{year,grade,month,week,slot:slotIndex});
   const experimentId=getSlots(year,grade,month,week)[slotIndex];
   if(experimentId&&experimentById.has(experimentId)){
     const item=experimentById.get(experimentId);
     const fragment=$("#placedCardTemplate").content.cloneNode(true);
     const card=$(".placed-card",fragment);
-    fillCard(card,item);
-    card.dataset.id=item.id;
+    fillCard(card,item);card.dataset.id=item.id;
+    card.addEventListener("click",event=>{if(!event.target.closest(".remove-card"))openImageModal(item)});
     card.addEventListener("dragstart",event=>{
       event.dataTransfer.effectAllowed="move";
-      event.dataTransfer.setData("text/plain",JSON.stringify({
-        type:"slot",experimentId:item.id,
-        from:{year,grade,month,week,slot:slotIndex}
-      }));
+      event.dataTransfer.setData("text/plain",JSON.stringify({type:"slot",experimentId:item.id,from:{year,grade,month,week,slot:slotIndex}}));
     });
     $(".remove-card",card).addEventListener("click",event=>{
-      event.stopPropagation();
-      ensureSlots(year,grade,month,week)[slotIndex]=null;
+      event.stopPropagation();ensureSlots(year,grade,month,week)[slotIndex]=null;
       persist("배치 제거됨");renderAll();
     });
     slot.append(card);
   }else{
-    slot.innerHTML=`<span class="slot-number">${slotIndex+1}번째 실험</span><div class="slot-placeholder"><b>＋</b><span>카드를 여기에 놓기</span></div>`;
+    slot.innerHTML=`<span class="slot-number">${slotIndex+1}</span><div class="slot-placeholder"><b>＋</b><span>카드 놓기</span></div>`;
   }
   slot.addEventListener("dragover",event=>{event.preventDefault();slot.classList.add("drag-over")});
   slot.addEventListener("dragleave",()=>slot.classList.remove("drag-over"));
@@ -218,21 +344,15 @@ function targetFromSlot(slot){
 }
 
 function placeExperiment(payload,target){
-  const item=experimentById.get(payload.experimentId);
-  if(!item)return;
+  const item=experimentById.get(payload.experimentId);if(!item)return;
   const existing=findAssignment(item.id,target.year,payload.type==="slot"?payload.from:null);
-  if(existing){
-    alert(`‘${item.name}’은(는) 이미 ${formatLocation(existing)}에 배치되어 있습니다.`);
-    return;
-  }
+  if(existing){alert(`‘${item.name}’은(는) 이미 ${formatLocation(existing)}에 배치되어 있습니다.`);return}
   const targetSlots=ensureSlots(target.year,target.grade,target.month,target.week);
   const occupying=targetSlots[target.slot];
   if(payload.type==="slot"){
-    const from=payload.from;
-    const fromSlots=ensureSlots(from.year,from.grade,from.month,from.week);
+    const from=payload.from,fromSlots=ensureSlots(from.year,from.grade,from.month,from.week);
     if(sameLocation(from,target))return;
-    fromSlots[from.slot]=occupying||null;
-    targetSlots[target.slot]=item.id;
+    fromSlots[from.slot]=occupying||null;targetSlots[target.slot]=item.id;
   }else{
     if(occupying&&!confirm(`이 칸의 실험을 ‘${item.name}’(으)로 교체할까요?`))return;
     targetSlots[target.slot]=item.id;
@@ -241,48 +361,35 @@ function placeExperiment(payload,target){
   persist("배치 저장됨");renderAll();
 }
 
-function sameLocation(a,b){
-  return String(a.year)===String(b.year)&&a.grade===b.grade&&Number(a.month)===Number(b.month)&&Number(a.week)===Number(b.week)&&Number(a.slot)===Number(b.slot);
-}
+function sameLocation(a,b){return String(a.year)===String(b.year)&&a.grade===b.grade&&Number(a.month)===Number(b.month)&&Number(a.week)===Number(b.week)&&Number(a.slot)===Number(b.slot)}
 
 function findAssignment(experimentId,year,ignore=null){
   const yearPlan=state.plans?.[year]||{};
-  for(const grade of GRADES){
-    for(const month of MONTHS){
-      for(const week of WEEKS){
-        const slots=yearPlan?.[grade]?.[month]?.[week]||[];
-        for(let slot=0;slot<slots.length;slot++){
-          const location={year,grade,month,week,slot};
-          if(slots[slot]===experimentId&&(!ignore||!sameLocation(location,ignore)))return location;
-        }
-      }
+  for(const grade of GRADES)for(const month of MONTHS)for(const week of WEEKS){
+    const slots=yearPlan?.[grade]?.[month]?.[week]||[];
+    for(let slot=0;slot<slots.length;slot++){
+      const location={year,grade,month,week,slot};
+      if(slots[slot]===experimentId&&(!ignore||!sameLocation(location,ignore)))return location;
     }
   }
   return null;
 }
 
-function formatLocation(location){
-  return `${location.grade} ${location.month}월 ${location.week}주 ${location.slot+1}번째 실험`;
-}
+function formatLocation(location){return`${location.grade} ${location.month}월 ${location.week}주 ${location.slot+1}번째 실험`}
 
 function assignedIds(year){
-  const ids=new Set();
-  const yearPlan=state.plans?.[year]||{};
+  const ids=new Set(),yearPlan=state.plans?.[year]||{};
   Object.values(yearPlan).forEach(months=>Object.values(months||{}).forEach(weeks=>Object.values(weeks||{}).forEach(slots=>Object.values(slots||{}).flat().forEach(id=>{if(id)ids.add(id)}))));
   return ids;
 }
 
 function countGrade(year,grade){
-  let count=0;
-  MONTHS.forEach(month=>WEEKS.forEach(week=>{
-    count+=getSlots(year,grade,month,week).slice(0,state.slotCount).filter(Boolean).length;
-  }));
+  let count=0;MONTHS.forEach(month=>WEEKS.forEach(week=>{count+=getSlots(year,grade,month,week).slice(0,state.slotCount).filter(Boolean).length}));
   return count;
 }
 
 function renderStats(){
-  const assigned=assignedIds(currentYear());
-  $("#assignedCount").textContent=assigned.size;
+  $("#assignedCount").textContent=assignedIds(currentYear()).size;
   $("#annualCount").textContent=countGrade(currentYear(),currentGrade);
   $("#annualCapacity").textContent=`/ ${12*4*state.slotCount}`;
 }
@@ -291,50 +398,50 @@ function changeSlotCount(){
   const next=Number($("#slotCountSelect").value);
   if(next===1){
     const year=currentYear();
-    const secondSlotCount=GRADES.reduce((total,grade)=>total+MONTHS.reduce((mTotal,month)=>mTotal+WEEKS.filter(week=>getSlots(year,grade,month,week)[1]).length,0),0);
-    if(secondSlotCount&&!confirm(`${year}년의 두 번째 실험 ${secondSlotCount}개가 숨겨집니다.\n데이터는 삭제하지 않고 보존할까요?`)){
-      $("#slotCountSelect").value="2";return;
-    }
+    const hidden=GRADES.reduce((total,grade)=>total+MONTHS.reduce((m,month)=>m+WEEKS.filter(week=>getSlots(year,grade,month,week)[1]).length,0),0);
+    if(hidden&&!confirm(`${year}년의 두 번째 실험 ${hidden}개가 숨겨집니다.\n데이터는 삭제되지 않습니다.`)){ $("#slotCountSelect").value="2";return }
   }
   state.slotCount=next;persist("주당 실험 수 변경됨");renderAll();
 }
 
 function exportPlan(){
-  const payload={version:1,exportedAt:new Date().toISOString(),state};
+  const payload={version:2,exportedAt:new Date().toISOString(),state};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
-  const link=document.createElement("a");
-  link.href=URL.createObjectURL(blob);link.download=`curriculum-${currentYear()}.json`;link.click();
-  URL.revokeObjectURL(link.href);
+  const link=document.createElement("a");link.href=URL.createObjectURL(blob);link.download=`curriculum-${currentYear()}.json`;link.click();URL.revokeObjectURL(link.href);
 }
 
 async function importPlan(file){
   try{
-    const data=JSON.parse(await file.text());
-    const incoming=data.state||data;
+    const data=JSON.parse(await file.text()),incoming=data.state||data;
     if(!incoming.plans)throw new Error();
-    state={...defaultState(),...incoming};
-    $("#slotCountSelect").value=String(state.slotCount||2);
+    state={...defaultState(),...incoming};$("#slotCountSelect").value=String(state.slotCount||2);
     persist("배치 파일 불러옴");renderAll();
   }catch{alert("올바른 커리큘럼 JSON 파일이 아닙니다.")}
 }
 
 function resetCurrentYear(){
-  const year=currentYear();
-  if(!state.plans[year])return;
+  const year=currentYear();if(!state.plans[year])return;
   if(!confirm(`${year}년의 모든 학년 커리큘럼을 초기화할까요?\n내려받은 백업이 없으면 복구할 수 없습니다.`))return;
-  delete state.plans[year];selectedExperimentId="";
-  persist(`${year}년 초기화됨`);renderAll();
+  delete state.plans[year];selectedExperimentId="";persist(`${year}년 초기화됨`);renderAll();
 }
 
-$("#searchInput").addEventListener("input",renderLibrary);
-$("#fieldFilter").addEventListener("change",renderLibrary);
-$("#difficultyFilter").addEventListener("change",renderLibrary);
-$("#yearInput").addEventListener("change",renderAll);
-$("#slotCountSelect").addEventListener("change",changeSlotCount);
-$("#cancelSelection").addEventListener("click",()=>{selectedExperimentId="";renderSelection();renderLibrary()});
-$("#exportButton").addEventListener("click",exportPlan);
-$("#importButton").addEventListener("click",()=>$("#importInput").click());
-$("#importInput").addEventListener("change",event=>{const file=event.target.files[0];if(file)importPlan(file);event.target.value=""});
-$("#resetButton").addEventListener("click",resetCurrentYear);
+function bindEvents(){
+  $("#searchInput").addEventListener("input",renderLibrary);
+  $("#fieldFilter").addEventListener("change",renderLibrary);
+  $("#difficultyFilter").addEventListener("change",renderLibrary);
+  $("#yearInput").addEventListener("change",renderAll);
+  $("#slotCountSelect").addEventListener("change",changeSlotCount);
+  $("#cancelSelection").addEventListener("click",()=>{selectedExperimentId="";renderSelection();renderLibrary()});
+  $("#reloadArchiveButton").addEventListener("click",()=>loadArchiveFromStorage(true));
+  $$("#viewTabs button").forEach(button=>button.addEventListener("click",()=>{viewMode=button.dataset.view;renderAll()}));
+  $("#exportButton").addEventListener("click",exportPlan);
+  $("#importButton").addEventListener("click",()=>$("#importInput").click());
+  $("#importInput").addEventListener("change",event=>{const file=event.target.files[0];if(file)importPlan(file);event.target.value=""});
+  $("#resetButton").addEventListener("click",resetCurrentYear);
+  $("#closeImageModal").addEventListener("click",()=>$("#imageModal").close());
+  $("#imageModal").addEventListener("click",event=>{if(event.target===$("#imageModal"))$("#imageModal").close()});
+  window.addEventListener("storage",event=>{if(event.key===ARCHIVE_STORAGE_KEY)loadArchiveFromStorage(false)});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadArchiveFromStorage(false)});
+}
 
 boot();
