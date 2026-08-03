@@ -67,7 +67,12 @@ function normalizeArchive(raw){
       difficulty:rawDifficulty==="보통"?"중간":rawDifficulty,
       target:clean(item.target||item.대상),grade:clean(item.grade||item.학년),
       curriculum:clean(item.curriculum2025||item.curriculum||item["2025 교과 연계"]),
-      unit:clean(item.unit||item["연계 단원"])
+      unit:clean(item.unit||item["연계 단원"]),subfield:clean(item.subfield||item["세부 분야"]),
+      coreConcepts:clean(item.coreConcepts||item["핵심 개념"]),
+      images:Array.isArray(item.images)?item.images.map(image=>({
+        fileId:clean(image.fileId),fileName:clean(image.fileName),page:Number(image.page)||1,
+        viewUrl:clean(image.viewUrl),thumbnailUrl:clean(image.thumbnailUrl)
+      })).sort((a,b)=>a.page-b.page):[]
     };
   }).filter(item=>item.id&&item.name);
 }
@@ -149,6 +154,39 @@ function renderReferenceSummary(){
   const id=$("#referenceId").value,name=$("#referenceName").value;
   $("#referenceSummary").textContent=id?`${name||"이름 없음"} · ${id}`:"연결된 실험이 없습니다.";
   $("#clearReferenceButton").hidden=!id;
+  renderReferencePreview();
+}
+
+function safeHttpUrl(value){
+  try{const url=new URL(clean(value),window.location.href);return["http:","https:"].includes(url.protocol)?url.href:""}catch{return""}
+}
+
+function renderReferencePreview(){
+  const id=clean($("#referenceId").value),empty=$("#referencePreviewEmpty"),content=$("#referencePreviewContent");
+  if(!id){empty.hidden=false;content.hidden=true;return}
+  const item=archiveExperiments.find(experiment=>experiment.id===id);
+  if(!item){empty.hidden=false;content.hidden=true;$("#referencePreviewEmptyText").textContent="최신 아카이브를 불러오면 원본 정보와 실험지를 확인할 수 있습니다.";return}
+  empty.hidden=true;content.hidden=false;$("#referencePreviewEmptyText").textContent="아카이브에서 실험을 선택하면 원본 정보와 실험지가 표시됩니다.";
+  $("#referencePreviewCode").textContent=item.code||item.id;$("#referencePreviewName").textContent=item.name;
+  $("#openArchiveExperiment").href=`../exp-archive/index.html?experiment=${encodeURIComponent(item.id)}`;
+  const info=[
+    ["분야",[item.field,item.subfield].filter(Boolean).join(" · ")],
+    ["난이도",item.difficulty],["대상·학년",[item.target,item.grade].filter(Boolean).join(" · ")],
+    ["교과 연계",item.curriculum],["연계 단원",item.unit],["핵심 개념",item.coreConcepts]
+  ].filter(([,value])=>value);
+  $("#referenceInfoList").innerHTML=info.map(([label,value])=>`<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
+  const imageList=$("#referenceImageList");imageList.innerHTML="";
+  if(!item.images.length){imageList.innerHTML='<div class="reference-no-image">연결된 실험지 이미지가 없습니다.</div>';return}
+  item.images.forEach((image,index)=>{
+    const source=safeHttpUrl(image.thumbnailUrl||image.viewUrl),link=safeHttpUrl(image.viewUrl||image.thumbnailUrl);
+    if(!source)return;
+    const figure=document.createElement("figure"),anchor=document.createElement("a"),img=document.createElement("img"),caption=document.createElement("figcaption");
+    anchor.href=link||source;anchor.target="_blank";anchor.rel="noopener";
+    img.src=source;img.alt=`${item.name} 실험지 ${index+1}`;img.loading=index===0?"eager":"lazy";
+    caption.textContent=`실험지 ${image.page||index+1}${image.fileName?` · ${image.fileName}`:""}`;
+    anchor.append(img);figure.append(anchor,caption);imageList.append(figure);
+  });
+  if(!imageList.children.length)imageList.innerHTML='<div class="reference-no-image">실험지 주소를 확인할 수 없습니다.</div>';
 }
 
 function renderMaterialRows(materials=[]){
@@ -317,7 +355,7 @@ function clearWeekChecks(){
   Object.keys(state.checks).forEach(key=>{if(key.startsWith(prefix))delete state.checks[key]});persist("체크 초기화됨");renderMaterialsChecklist();
 }
 
-function renderAll(){renderExperiments();renderCurriculum();renderMaterialsChecklist()}
+function renderAll(){renderExperiments();renderCurriculum();renderMaterialsChecklist();renderReferencePreview()}
 
 function getSyncConfig(){
   try{const value=JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)||"null");return value?.url&&value?.key?value:null}catch{return null}

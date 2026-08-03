@@ -8,6 +8,7 @@ var LAB_CONFIG = {
   settingSheet: '설정',
   archiveSpreadsheetId: '1Fbfaw3ZEE7KP6IzeNwp5kigbwt5W2kgufzS6Cdm_xck',
   archiveMasterSheet: '실험 마스터',
+  archiveImageSheet: '이미지 파일',
   experimentHeaders: ['내 실험 ID','실험명','참고 실험 ID','참고 실험명','분야','난이도','대상','학년','교과 연계','연계 단원','실험 목표','준비물 JSON','실험 순서','관찰·기록','메모','생성일','수정일'],
   placementHeaders: ['배치 ID','연도','학년','월','주','순번','내 실험 ID','실험명','수정일'],
   materialHeaders: ['체크 ID','연도','학년','월','주','순번','내 실험 ID','실험명','준비물','수량','구매 링크','체크','수정일'],
@@ -134,11 +135,40 @@ function readSourceArchiveExperiments_() {
   LAB_CONFIG.archiveHeaders.forEach(function(header, index) {
     if (headers[index] !== header) throw new Error('기존 실험 아카이브의 ' + (index + 1) + '열 제목이 ' + header + '이(가) 아닙니다.');
   });
+  var imagesByName = readSourceArchiveImages_(source);
   var count = Math.max(sheet.getLastRow() - 1, 0);
   if (!count) return [];
   return sheet.getRange(2, 1, count, LAB_CONFIG.archiveHeaders.length).getDisplayValues().filter(function(row) { return row[0] && row[2]; }).map(function(row) {
-    return {id:row[0],code:row[1],name:row[2],field:row[3],subfield:row[4],difficulty:row[5],target:row[6],grade:row[7],curriculum2025:row[8],unit:row[9],coreConcepts:row[10]};
+    return {id:row[0],code:row[1],name:row[2],field:row[3],subfield:row[4],difficulty:row[5],target:row[6],grade:row[7],curriculum2025:row[8],unit:row[9],coreConcepts:row[10],images:imagesByName[normalizeArchiveName_(row[2])] || []};
   });
+}
+
+function readSourceArchiveImages_(source) {
+  var sheet = source.getSheetByName(LAB_CONFIG.archiveImageSheet);
+  if (!sheet || sheet.getLastRow() < 2) return {};
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getDisplayValues();
+  var map = {};
+  rows.forEach(function(row) {
+    var key = normalizeArchiveName_(row[2]);
+    if (!key) return;
+    var fileId = String(row[0] || '');
+    if (!map[key]) map[key] = [];
+    map[key].push({
+      fileId:fileId,
+      fileName:String(row[1] || ''),
+      page:Number(row[3]) || 1,
+      viewUrl:String(row[4] || ''),
+      thumbnailUrl:fileId ? 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1600' : ''
+    });
+  });
+  Object.keys(map).forEach(function(key) {
+    map[key].sort(function(a, b) { return a.page - b.page; });
+  });
+  return map;
+}
+
+function normalizeArchiveName_(name) {
+  return String(name || '').normalize('NFC').replace(/\.(png|jpg|jpeg)$/i, '').replace(/\s+/g, ' ').trim();
 }
 
 function refreshReferenceNames_(sheet, archiveExperiments) {
