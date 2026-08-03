@@ -3,10 +3,15 @@ const ARCHIVE_CONFIG = Object.freeze({
   masterSheet: '실험 마스터',
   backupSheet: '백업',
   recentSheet: '새로운 실험',
+  curriculumSheet: '실험 배치',
+  curriculumBackupSheet: '배치 백업',
   imageSheet: '이미지 파일',
   folderId: '1vbXiekWL_rus5qHLQFuBd1rIHlLZg96_',
   jsonName: 'experiment-archive.json',
-  headers: ['ID','코드','실험명','분야','세부 분야','난이도','대상','학년','2025 교과 연계','연계 단원','핵심 개념']
+  labSpreadsheetId: '1X_IIQQ37KcksWBoK2BexyEv0_Is8VJaPbBJg7BiD2xk',
+  labExperimentSheet: '내 실험',
+  headers: ['ID','코드','실험명','분야','세부 분야','난이도','대상','학년','2025 교과 연계','연계 단원','핵심 개념'],
+  curriculumHeaders: ['배치 ID','연도','학년','월','주','순번','실험 ID','코드','실험명','주당 실험 수','수정일']
 });
 
 function onOpen() {
@@ -18,13 +23,14 @@ function onOpen() {
     .addItem('시트 → JSON 내보내기', 'exportArchiveJson')
     .addItem('JSON → 시트 갱신', 'importArchiveJsonToSheet')
     .addItem('최근 30일 목록 갱신', 'refreshRecentSheet')
+    .addItem('나의 실험실 참고명 갱신', 'syncArchiveToMyLab')
     .addToUi();
 }
 
 function setupArchiveSheets() {
   const ss = SpreadsheetApp.openById(ARCHIVE_CONFIG.spreadsheetId);
   ensureArchiveSheets_(ss);
-  SpreadsheetApp.getUi().alert('실험 마스터, 백업, 새로운 실험 시트가 준비되었습니다.');
+  SpreadsheetApp.getUi().alert('실험 마스터, 백업, 새로운 실험, 실험 배치, 배치 백업 시트가 준비되었습니다.');
 }
 
 function showOrCreateSyncKey() {
@@ -60,6 +66,10 @@ function doGet(e) {
     verifySyncKey_(e && e.parameter ? e.parameter.key : '');
     const ss = SpreadsheetApp.openById(ARCHIVE_CONFIG.spreadsheetId);
     ensureArchiveSheets_(ss);
+    if (e && e.parameter && e.parameter.action === 'curriculum') {
+      const curriculum = readCurriculumYear_(ss, e.parameter.year);
+      return jsonResponse_({ok:true, curriculum:curriculum});
+    }
     const archive = buildArchiveFromMaster_(ss);
     writeArchiveFile_(archive);
     return jsonResponse_({ok:true, archive:archive});
@@ -76,11 +86,20 @@ function doPost(e) {
   try {
     const request = JSON.parse(e && e.postData ? e.postData.contents : '{}');
     verifySyncKey_(request.key);
+    const ss = SpreadsheetApp.openById(ARCHIVE_CONFIG.spreadsheetId);
+    ensureArchiveSheets_(ss);
+    if (request.action === 'curriculum-sync') {
+      const curriculumResult = syncCurriculumYear_(ss, request);
+      return jsonResponse_({
+        ok:true,
+        curriculum:curriculumResult.curriculum,
+        backupCount:curriculumResult.backupCount,
+        placementCount:curriculumResult.curriculum.placements.length
+      });
+    }
     const incoming = request.archive;
     validateArchive_(incoming);
 
-    const ss = SpreadsheetApp.openById(ARCHIVE_CONFIG.spreadsheetId);
-    ensureArchiveSheets_(ss);
     const previous = readArchiveFile_(false) || {experiments:[]};
     const backupCount = appendBackup_(ss, previous);
 
@@ -91,12 +110,14 @@ function doPost(e) {
     writeArchiveFile_(incoming);
     writeMasterSheet_(ss, incoming);
     const recentCount = writeRecentSheet_(ss, incoming);
+    const labReferenceCount = updateLabReferenceNames_(incoming);
 
     return jsonResponse_({
       ok:true,
       archive:incoming,
       backupCount:backupCount,
-      recentCount:recentCount
+      recentCount:recentCount,
+      labReferenceCount:labReferenceCount
     });
   } catch (error) {
     return jsonResponse_({ok:false, message:error.message});
@@ -114,7 +135,8 @@ function exportArchiveJson() {
     const archive = buildArchiveFromMaster_(ss);
     writeArchiveFile_(archive);
     writeRecentSheet_(ss, archive);
-    SpreadsheetApp.getUi().alert('JSON 저장 완료\n실험 ' + archive.experiments.length + '개');
+    const labReferenceCount = updateLabReferenceNames_(archive);
+    SpreadsheetApp.getUi().alert('JSON 저장 완료\n실험 ' + archive.experiments.length + '개\n나의 실험실 참고명 갱신 ' + labReferenceCount + '개');
   } finally {
     lock.releaseLock();
   }
@@ -139,7 +161,8 @@ function importArchiveJsonToSheet() {
     const backupCount = appendBackup_(ss, archive);
     writeMasterSheet_(ss, archive);
     const recentCount = writeRecentSheet_(ss, archive);
-    ui.alert('시트 갱신 완료\n백업 ' + backupCount + '개 · 최근 30일 ' + recentCount + '개');
+    const labReferenceCount = updateLabReferenceNames_(archive);
+    ui.alert('시트 갱신 완료\n백업 ' + backupCount + '개 · 최근 30일 ' + recentCount + '개\n나의 실험실 참고명 갱신 ' + labReferenceCount + '개');
   } finally {
     lock.releaseLock();
   }
@@ -153,16 +176,54 @@ function refreshRecentSheet() {
   SpreadsheetApp.getUi().alert('최근 30일 실험 ' + count + '개를 갱신했습니다.');
 }
 
+function syncArchiveToMyLab() {
+  const ss = SpreadsheetApp.openById(ARCHIVE_CONFIG.spreadsheetId);
+  ensureArchiveSheets_(ss);
+  const archive = buildArchiveFromMaster_(ss);
+  writeArchiveFile_(archive);
+  const count = updateLabReferenceNames_(archive);
+  SpreadsheetApp.getUi().alert('나의 실험실 참고 실험명 ' + count + '개를 갱신했습니다.');
+}
+
+function updateLabReferenceNames_(archive) {
+  validateArchive_(archive);
+  const lab = SpreadsheetApp.openById(ARCHIVE_CONFIG.labSpreadsheetId);
+  const sheet = lab.getSheetByName(ARCHIVE_CONFIG.labExperimentSheet);
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  const byId = {};
+  archive.experiments.forEach(function(x) { byId[String(x.id)] = x.name || ''; });
+  const count = sheet.getLastRow() - 1;
+  const range = sheet.getRange(2, 3, count, 2);
+  const values = range.getValues();
+  let changed = 0;
+  values.forEach(function(row) {
+    const currentName = byId[String(row[0] || '')];
+    if (currentName && row[1] !== currentName) {
+      row[1] = currentName;
+      changed += 1;
+    }
+  });
+  if (changed) range.setValues(values);
+  return changed;
+}
+
 function ensureArchiveSheets_(ss) {
   let backup = ss.getSheetByName(ARCHIVE_CONFIG.backupSheet);
   if (!backup) backup = ss.insertSheet(ARCHIVE_CONFIG.backupSheet);
   let recent = ss.getSheetByName(ARCHIVE_CONFIG.recentSheet);
   if (!recent) recent = ss.insertSheet(ARCHIVE_CONFIG.recentSheet);
+  let curriculum = ss.getSheetByName(ARCHIVE_CONFIG.curriculumSheet);
+  if (!curriculum) curriculum = ss.insertSheet(ARCHIVE_CONFIG.curriculumSheet);
+  let curriculumBackup = ss.getSheetByName(ARCHIVE_CONFIG.curriculumBackupSheet);
+  if (!curriculumBackup) curriculumBackup = ss.insertSheet(ARCHIVE_CONFIG.curriculumBackupSheet);
 
   const backupHeaders = ['백업 일시'].concat(ARCHIVE_CONFIG.headers).concat(['전체 JSON']);
   const recentHeaders = ['수정일'].concat(ARCHIVE_CONFIG.headers);
+  const curriculumBackupHeaders = ['백업 일시'].concat(ARCHIVE_CONFIG.curriculumHeaders);
   prepareSheet_(backup, backupHeaders);
   prepareSheet_(recent, recentHeaders);
+  prepareSheet_(curriculum, ARCHIVE_CONFIG.curriculumHeaders);
+  prepareSheet_(curriculumBackup, curriculumBackupHeaders);
 }
 
 function prepareSheet_(sheet, headers) {
@@ -268,6 +329,154 @@ function experimentRow_(x) {
     x.difficulty || '', x.target || '', x.grade || '', x.curriculum2025 || '',
     x.unit || '', x.coreConcepts || ''
   ];
+}
+
+function readCurriculumYear_(ss, yearValue) {
+  const year = validateCurriculumYear_(yearValue);
+  const sheet = ss.getSheetByName(ARCHIVE_CONFIG.curriculumSheet);
+  if (!sheet || sheet.getLastRow() < 2) {
+    return {year:year, slotCount:2, placements:[], syncedAt:''};
+  }
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, ARCHIVE_CONFIG.curriculumHeaders.length).getDisplayValues();
+  const selected = rows.filter(function(row) {
+    return String(row[1]).trim() === year;
+  });
+  const slotCount = selected.length ? Math.max(1, Math.min(2, Number(selected[0][9]) || 2)) : 2;
+  const placements = selected.map(function(row) {
+    return {
+      placementId:row[0],
+      grade:row[2],
+      month:Number(row[3]),
+      week:Number(row[4]),
+      order:Number(row[5]),
+      experimentId:row[6]
+    };
+  }).filter(function(item) {
+    return item.grade && item.month && item.week && item.order && item.experimentId;
+  }).sort(compareCurriculumPlacement_);
+  return {
+    year:year,
+    slotCount:slotCount,
+    placements:placements,
+    syncedAt:selected.length ? selected[0][10] : ''
+  };
+}
+
+function syncCurriculumYear_(ss, request) {
+  const year = validateCurriculumYear_(request.year);
+  const slotCount = Math.max(1, Math.min(2, Number(request.slotCount) || 2));
+  const placements = Array.isArray(request.placements) ? request.placements : [];
+  validateCurriculumPlacements_(placements);
+
+  const sheet = ss.getSheetByName(ARCHIVE_CONFIG.curriculumSheet);
+  const backupSheet = ss.getSheetByName(ARCHIVE_CONFIG.curriculumBackupSheet);
+  const width = ARCHIVE_CONFIG.curriculumHeaders.length;
+  const existing = sheet.getLastRow() < 2
+    ? []
+    : sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getDisplayValues();
+  const previousYearRows = existing.filter(function(row) {
+    return String(row[1]).trim() === year;
+  });
+  const keepRows = existing.filter(function(row) {
+    return String(row[1]).trim() !== year && row.some(function(value) { return value !== ''; });
+  });
+
+  const backupCount = appendCurriculumBackup_(backupSheet, previousYearRows);
+  const masterIndex = readMasterIndex_(ss);
+  const stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+  const newRows = placements.map(function(item) {
+    const experiment = masterIndex[String(item.experimentId)] || {};
+    const order = Number(item.order);
+    const placementId = [
+      year,
+      String(item.grade),
+      String(Number(item.month)).padStart(2, '0'),
+      String(Number(item.week)).padStart(2, '0'),
+      String(order)
+    ].join('-');
+    return [
+      placementId, year, item.grade, Number(item.month), Number(item.week), order,
+      item.experimentId, experiment.code || '', experiment.name || '', slotCount, stamp
+    ];
+  }).sort(function(a, b) {
+    return compareCurriculumPlacement_({
+      grade:a[2], month:a[3], week:a[4], order:a[5]
+    }, {
+      grade:b[2], month:b[3], week:b[4], order:b[5]
+    });
+  });
+
+  const oldRowCount = Math.max(sheet.getLastRow() - 1, 0);
+  if (oldRowCount) sheet.getRange(2, 1, oldRowCount, width).clearContent();
+  const allRows = keepRows.concat(newRows);
+  if (allRows.length) {
+    ensureRows_(sheet, allRows.length + 1);
+    sheet.getRange(2, 1, allRows.length, width).setValues(allRows);
+    sheet.getRange(2, 11, allRows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  }
+  return {
+    backupCount:backupCount,
+    curriculum:readCurriculumYear_(ss, year)
+  };
+}
+
+function appendCurriculumBackup_(sheet, rows) {
+  if (!rows.length) return 0;
+  const stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+  const backupRows = rows.map(function(row) { return [stamp].concat(row); });
+  const startRow = sheet.getLastRow() + 1;
+  ensureRows_(sheet, startRow + backupRows.length - 1);
+  sheet.getRange(startRow, 1, backupRows.length, backupRows[0].length).setValues(backupRows);
+  sheet.getRange(startRow, 1, backupRows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  return backupRows.length;
+}
+
+function readMasterIndex_(ss) {
+  const sheet = ss.getSheetByName(ARCHIVE_CONFIG.masterSheet);
+  if (!sheet || sheet.getLastRow() < 2) return {};
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getDisplayValues();
+  return rows.reduce(function(index, row) {
+    const id = String(row[0] || '').trim();
+    if (id) index[id] = {code:row[1], name:row[2]};
+    return index;
+  }, {});
+}
+
+function validateCurriculumYear_(yearValue) {
+  const year = String(yearValue || '').trim();
+  if (!/^\d{4}$/.test(year) || Number(year) < 2020 || Number(year) > 2100) {
+    throw new Error('연도는 2020~2100 사이의 네 자리 숫자여야 합니다.');
+  }
+  return year;
+}
+
+function validateCurriculumPlacements_(placements) {
+  const grades = ['7세','1학년','2학년','3학년','4학년','5학년','6학년','중등'];
+  const locations = new Set();
+  const experiments = new Set();
+  placements.forEach(function(item, index) {
+    const month = Number(item.month);
+    const week = Number(item.week);
+    const order = Number(item.order);
+    const experimentId = String(item.experimentId || '').trim();
+    if (grades.indexOf(item.grade) < 0 || month < 1 || month > 12 ||
+        week < 1 || week > 4 || order < 1 || order > 2 || !experimentId) {
+      throw new Error((index + 1) + '번째 배치 정보가 올바르지 않습니다.');
+    }
+    const location = [item.grade, month, week, order].join('|');
+    if (locations.has(location)) throw new Error('같은 위치에 실험이 중복 배치되어 있습니다: ' + location);
+    if (experiments.has(experimentId)) throw new Error('같은 연도에 중복된 실험이 있습니다: ' + experimentId);
+    locations.add(location);
+    experiments.add(experimentId);
+  });
+}
+
+function compareCurriculumPlacement_(a, b) {
+  const gradeOrder = {'7세':0,'1학년':1,'2학년':2,'3학년':3,'4학년':4,'5학년':5,'6학년':6,'중등':7};
+  return (gradeOrder[a.grade] - gradeOrder[b.grade]) ||
+    (Number(a.month) - Number(b.month)) ||
+    (Number(a.week) - Number(b.week)) ||
+    (Number(a.order) - Number(b.order));
 }
 
 function readImagesByName_(ss) {

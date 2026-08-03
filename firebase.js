@@ -1,5 +1,5 @@
-// Firebase 콘솔에서 발급받은 설정값으로 아래 내용을 교체하세요.
-// 설정 전에도 홈페이지의 화면과 바로가기는 정상 작동합니다.
+// 메인 포털은 Firebase 없이 동작합니다.
+// 다른 프로그램에서 Firebase를 사용할 경우 기존 설정을 이 파일에 유지할 수 있습니다.
 
 let db = null;
 let firebaseReady = false;
@@ -16,13 +16,8 @@ const firebaseConfig = {
 const hasFirebaseConfig = Object.values(firebaseConfig).every(Boolean);
 
 if (hasFirebaseConfig) {
-  const { initializeApp } = await import(
-    "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js"
-  );
-  const { getFirestore } = await import(
-    "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"
-  );
-
+  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js");
+  const { getFirestore } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
   firebaseReady = true;

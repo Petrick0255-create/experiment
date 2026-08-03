@@ -266,8 +266,8 @@ async function syncArchive() {
     const result=await response.json();
     if(!result.ok)throw new Error(result.message||"동기화에 실패했습니다.");
     archive=normalizeArchive(result.archive||archive);persist();renderList();
-    $("#saveState").textContent=`동기화 완료 · 신규 ${result.recentCount||0}개`;
-    alert(`동기화가 완료되었습니다.\n백업: ${result.backupCount||0}개\n실험 마스터: ${archive.experiments.length}개\n최근 30일: ${result.recentCount||0}개`);
+    $("#saveState").textContent=`동기화 완료 · 참고명 ${result.labReferenceCount||0}개 갱신`;
+    alert(`동기화가 완료되었습니다.\n백업: ${result.backupCount||0}개\n실험 마스터: ${archive.experiments.length}개\n최근 30일: ${result.recentCount||0}개\n나의 실험실 참고명 갱신: ${result.labReferenceCount||0}개`);
   } catch(error) {
     console.error(error);
     $("#saveState").textContent="동기화 실패";
