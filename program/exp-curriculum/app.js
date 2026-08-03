@@ -20,6 +20,7 @@ let selectedExperimentId="";
 let modalExperiment=null;
 let modalImageIndex=0;
 let hoverTimer=0;
+let cardDragging=false;
 const dirtyYears=new Set(state.dirtyYears||[]);
 const loadedYears=new Set();
 
@@ -216,6 +217,12 @@ function positionHoverPreview(event){
   preview.style.left=`${left}px`;preview.style.top=`${top}px`;
 }
 
+function openArchiveEditor(item){
+  const url=new URL("../exp-archive/index.html",window.location.href);
+  url.searchParams.set("experiment",item.id);
+  window.location.href=url.href;
+}
+
 function openImageModal(item,index=0){
   modalExperiment=item;modalImageIndex=index;
   $("#modalCode").textContent=item.code||item.id;
@@ -262,12 +269,14 @@ function renderLibrary(){
     card.classList.toggle("selected",selectedExperimentId===item.id);
     card.addEventListener("dragstart",event=>{
       if(assigned.has(item.id)){event.preventDefault();return}
+      cardDragging=true;
       event.dataTransfer.effectAllowed="copy";
       event.dataTransfer.setData("text/plain",JSON.stringify({type:"library",experimentId:item.id}));
     });
+    card.addEventListener("dragend",()=>setTimeout(()=>{cardDragging=false},0));
     card.addEventListener("click",event=>{
-      if(event.target.closest(".select-card"))return;
-      openImageModal(item);
+      if(cardDragging||event.target.closest(".select-card"))return;
+      openArchiveEditor(item);
     });
     $(".select-card",card).addEventListener("click",event=>{
       event.stopPropagation();
@@ -327,11 +336,13 @@ function createSlot(year,grade,month,week,slotIndex){
     const fragment=$("#placedCardTemplate").content.cloneNode(true);
     const card=$(".placed-card",fragment);
     fillCard(card,item);card.dataset.id=item.id;
-    card.addEventListener("click",event=>{if(!event.target.closest(".remove-card"))openImageModal(item)});
+    card.addEventListener("click",event=>{if(!cardDragging&&!event.target.closest(".remove-card"))openArchiveEditor(item)});
     card.addEventListener("dragstart",event=>{
+      cardDragging=true;
       event.dataTransfer.effectAllowed="move";
       event.dataTransfer.setData("text/plain",JSON.stringify({type:"slot",experimentId:item.id,from:{year,grade,month,week,slot:slotIndex}}));
     });
+    card.addEventListener("dragend",()=>setTimeout(()=>{cardDragging=false},0));
     $(".remove-card",card).addEventListener("click",event=>{
       event.stopPropagation();ensureSlots(year,grade,month,week)[slotIndex]=null;
       persist("배치 제거됨");renderAll();

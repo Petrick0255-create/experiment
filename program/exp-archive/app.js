@@ -24,6 +24,7 @@ async function boot() {
       archive = normalizeArchive(JSON.parse(saved));
       $("#saveState").textContent = `저장된 JSON · ${archive.experiments.length}개`;
       renderList();
+      openRequestedExperiment();
       return;
     } catch (error) {
       console.warn("저장된 JSON을 읽지 못해 다시 가져옵니다.", error);
@@ -38,6 +39,7 @@ async function boot() {
       persist();
       $("#saveState").textContent = `최초 JSON 저장 · ${archive.experiments.length}개`;
       renderList();
+      openRequestedExperiment();
       return;
     } catch (error) {
       console.warn(error);
@@ -53,6 +55,19 @@ async function boot() {
     $("#saveState").textContent = "JSON을 가져오세요";
   }
   renderList();
+  openRequestedExperiment();
+}
+
+function openRequestedExperiment() {
+  const requestedId=clean(new URLSearchParams(window.location.search).get("experiment"));
+  if(!requestedId)return;
+  const experiment=archive.experiments.find(item=>item.id===requestedId);
+  if(!experiment){
+    $("#saveState").textContent=`${requestedId} 실험을 찾지 못함`;
+    return;
+  }
+  selectExperiment(requestedId);
+  requestAnimationFrame(()=>el.form.scrollIntoView({behavior:"smooth",block:"start"}));
 }
 
 async function requestCurrentArchive(config) {
