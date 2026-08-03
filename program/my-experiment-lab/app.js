@@ -27,7 +27,7 @@ function normalizeState(raw){
   base.experiments=(base.experiments||[]).map(item=>({
     id:clean(item.id),name:clean(item.name),referenceId:clean(item.referenceId),referenceName:clean(item.referenceName),
     field:clean(item.field),difficulty:clean(item.difficulty),target:clean(item.target),grade:clean(item.grade),
-    curriculum:clean(item.curriculum),unit:clean(item.unit),goal:clean(item.goal),
+    curriculum:clean(item.curriculum),unit:clean(item.unit),goal:clean(item.goal),thinking:clean(item.thinking),worksheetColor:clean(item.worksheetColor)||"#6f93d6",
     materials:Array.isArray(item.materials)?item.materials.map(m=>({name:clean(m.name),quantity:clean(m.quantity),link:clean(m.link)})):[],
     steps:Array.isArray(item.steps)?item.steps:lines(item.steps),observation:clean(item.observation),note:clean(item.note),
     createdAt:item.createdAt||"",updatedAt:item.updatedAt||""
@@ -116,7 +116,7 @@ function newExperiment(base=null){
   const now=new Date().toISOString();
   const item={id:nextExperimentId(),name:base?`${base.name} 새 계획`:"",referenceId:base?.referenceId||"",referenceName:base?.referenceName||"",
     field:base?.field||"",difficulty:base?.difficulty||"",target:base?.target||"",grade:base?.grade||"",curriculum:base?.curriculum||"",unit:base?.unit||"",
-    goal:base?.goal||"",materials:base?structuredClone(base.materials):[],steps:base?[...base.steps]:[],observation:base?.observation||"",note:base?.note||"",createdAt:now,updatedAt:now};
+    goal:base?.goal||"",thinking:base?.thinking||"",worksheetColor:base?.worksheetColor||"#6f93d6",materials:base?structuredClone(base.materials):[],steps:base?[...base.steps]:[],observation:base?.observation||"",note:base?.note||"",createdAt:now,updatedAt:now};
   state.experiments.unshift(item);selectedExperimentId=item.id;persist("새 실험 생성됨");renderExperiments();openEditor(item.id);
 }
 
@@ -145,9 +145,9 @@ function openEditor(id){
   selectedExperimentId=id;$("#editorEmpty").hidden=true;$("#experimentForm").hidden=false;
   $("#myExperimentId").value=item.id;$("#nameInput").value=item.name;$("#fieldInput").value=item.field;$("#difficultyInput").value=item.difficulty;
   $("#targetInput").value=item.target;$("#gradeInput").value=item.grade;$("#curriculumInput").value=item.curriculum;$("#unitInput").value=item.unit;
-  $("#goalInput").value=item.goal;$("#stepsInput").value=item.steps.join("\n");$("#observationInput").value=item.observation;$("#noteInput").value=item.note;
+  $("#goalInput").value=item.goal;$("#thinkingInput").value=item.thinking;$("#worksheetColorInput").value=item.worksheetColor||"#6f93d6";$$('.step-input').forEach((input,index)=>{input.value=item.steps[index]||""});$("#observationInput").value=item.observation;$("#noteInput").value=item.note;
   $("#referenceId").value=item.referenceId;$("#referenceName").value=item.referenceName;$("#editorTitle").textContent=item.name||"새 실험";
-  renderReferenceSummary();renderMaterialRows(item.materials);renderExperiments();
+  renderReferenceSummary();renderMaterialRows(item.materials);renderExperiments();renderWorksheetPreview();
 }
 
 function renderReferenceSummary(){
@@ -196,7 +196,7 @@ function renderMaterialRows(materials=[]){
 function addMaterialRow(material={}){
   const fragment=$("#materialRowTemplate").content.cloneNode(true),row=$(".material-row",fragment);
   $(".material-name",row).value=material.name||"";$(".material-quantity",row).value=material.quantity||"";$(".material-link",row).value=material.link||"";
-  $(".remove-material",row).addEventListener("click",()=>row.remove());$("#materialsList").append(fragment);
+  $(".remove-material",row).addEventListener("click",()=>{row.remove();renderWorksheetPreview()});$("#materialsList").append(fragment);
 }
 
 function collectMaterials(){
@@ -208,7 +208,7 @@ function saveExperiment(event){
   const name=clean($("#nameInput").value);if(!name){alert("실험명을 입력해 주세요.");return}
   Object.assign(item,{name,referenceId:clean($("#referenceId").value),referenceName:clean($("#referenceName").value),field:$("#fieldInput").value,
     difficulty:$("#difficultyInput").value,target:$("#targetInput").value,grade:$("#gradeInput").value,curriculum:clean($("#curriculumInput").value),
-    unit:clean($("#unitInput").value),goal:clean($("#goalInput").value),materials:collectMaterials(),steps:lines($("#stepsInput").value),
+    unit:clean($("#unitInput").value),goal:clean($("#goalInput").value),thinking:clean($("#thinkingInput").value),worksheetColor:clean($("#worksheetColorInput").value)||"#6f93d6",materials:collectMaterials(),steps:$$('.step-input').map(input=>clean(input.value)),
     observation:clean($("#observationInput").value),note:clean($("#noteInput").value),updatedAt:new Date().toISOString()});
   $("#editorTitle").textContent=item.name;persist("내 실험 저장됨");renderAll();
 }
@@ -237,7 +237,7 @@ function selectReference(item){
   if(!$("#fieldInput").value)$("#fieldInput").value=item.field;if(!$("#difficultyInput").value)$("#difficultyInput").value=item.difficulty;
   if(!$("#targetInput").value)$("#targetInput").value=item.target;if(!$("#gradeInput").value)$("#gradeInput").value=item.grade;
   if(!clean($("#curriculumInput").value))$("#curriculumInput").value=item.curriculum;if(!clean($("#unitInput").value))$("#unitInput").value=item.unit;
-  renderReferenceSummary();$("#archiveDialog").close();
+  renderReferenceSummary();renderWorksheetPreview();$("#archiveDialog").close();
 }
 
 async function importArchiveFile(file){
@@ -355,7 +355,128 @@ function clearWeekChecks(){
   Object.keys(state.checks).forEach(key=>{if(key.startsWith(prefix))delete state.checks[key]});persist("체크 초기화됨");renderMaterialsChecklist();
 }
 
-function renderAll(){renderExperiments();renderCurriculum();renderMaterialsChecklist();renderReferencePreview()}
+const WORKSHEET_SIZE={width:1240,height:1754};
+let worksheetRenderFrame=0;
+
+function worksheetValues(){
+  const materials=collectMaterials().map(item=>[item.name,item.quantity].filter(Boolean).join(" ")).filter(Boolean).join(" · ");
+  return{
+    title:clean($("#nameInput")?.value)||"실험 제목",
+    curriculum:clean($("#curriculumInput")?.value)||clean($("#unitInput")?.value),
+    audience:[clean($("#targetInput")?.value),clean($("#gradeInput")?.value)].filter(Boolean).join(" · "),
+    goal:clean($("#goalInput")?.value),materials,thinking:clean($("#thinkingInput")?.value),color:clean($("#worksheetColorInput")?.value)||"#6f93d6",
+    steps:$$('.step-input').map(input=>clean(input.value))
+  };
+}
+
+function mixHex(color,mix="#ffffff",amount=.5){
+  const parse=value=>{const raw=String(value||"").replace("#","");if(!/^[0-9a-f]{6}$/i.test(raw))return[111,147,214];return[0,2,4].map(index=>parseInt(raw.slice(index,index+2),16))};
+  const a=parse(color),b=parse(mix);return`#${a.map((value,index)=>Math.round(value*(1-amount)+b[index]*amount).toString(16).padStart(2,"0")).join("")}`;
+}
+
+function roundedRect(context,x,y,width,height,radius,fill,stroke=""){
+  const r=Math.min(radius,width/2,height/2);context.beginPath();context.moveTo(x+r,y);context.lineTo(x+width-r,y);context.quadraticCurveTo(x+width,y,x+width,y+r);context.lineTo(x+width,y+height-r);context.quadraticCurveTo(x+width,y+height,x+width-r,y+height);context.lineTo(x+r,y+height);context.quadraticCurveTo(x,y+height,x,y+height-r);context.lineTo(x,y+r);context.quadraticCurveTo(x,y,x+r,y);context.closePath();if(fill){context.fillStyle=fill;context.fill()}if(stroke){context.strokeStyle=stroke;context.lineWidth=1.5;context.stroke()}
+}
+
+function splitCanvasLines(context,text,maxWidth){
+  const paragraphs=String(text||"").split(/\r?\n/),result=[];
+  paragraphs.forEach((paragraph,paragraphIndex)=>{
+    if(!paragraph){result.push("");return}
+    let line="";
+    [...paragraph].forEach(char=>{
+      const candidate=line+char;
+      if(line&&context.measureText(candidate).width>maxWidth){result.push(line.trimEnd());line=char.trimStart()}else line=candidate;
+    });
+    if(line)result.push(line.trimEnd());
+    if(paragraphIndex<paragraphs.length-1&&paragraph)result.push("");
+  });
+  return result;
+}
+
+function drawFittedText(context,text,box,options={}){
+  const value=clean(text);if(!value)return{shrunk:false,truncated:false};
+  const weight=options.weight||500,maxSize=options.maxSize||34,minSize=options.minSize||18,lineRatio=options.lineRatio||1.48;
+  let size=maxSize,lines=[],lineHeight=0,maxLines=0;
+  while(size>=minSize){
+    context.font=`${weight} ${size}px "Noto Sans KR", sans-serif`;
+    lines=splitCanvasLines(context,value,box.width);lineHeight=size*lineRatio;maxLines=Math.max(1,Math.floor(box.height/lineHeight));
+    if(lines.length<=maxLines)break;size-=2;
+  }
+  const truncated=lines.length>maxLines;
+  if(truncated){
+    lines=lines.slice(0,maxLines);let last=lines.length-1,ending=lines[last].replace(/\s+$/g,"");
+    while(ending&&context.measureText(`${ending}…`).width>box.width)ending=ending.slice(0,-1);
+    lines[last]=`${ending}…`;
+  }
+  context.fillStyle=options.color||"#1d1d1f";context.textBaseline="top";context.textAlign=options.align||"left";
+  const x=options.align==="right"?box.x+box.width:options.align==="center"?box.x+box.width/2:box.x;
+  lines.forEach((line,index)=>context.fillText(line,x,box.y+index*lineHeight));
+  return{shrunk:size<maxSize,truncated};
+}
+
+function drawWorksheet(canvas,exportScale=1){
+  const context=canvas.getContext("2d"),scale=(canvas.width/WORKSHEET_SIZE.width)||exportScale;
+  context.setTransform(scale,0,0,scale,0,0);context.clearRect(0,0,WORKSHEET_SIZE.width,WORKSHEET_SIZE.height);
+  const data=worksheetValues(),warnings=[];
+  const accent=data.color,background=mixHex(accent,"#ffffff",.91),soft=mixHex(accent,"#ffffff",.82),line=mixHex(accent,"#ffffff",.62),ink="#202532";
+  context.fillStyle=background;context.fillRect(0,0,WORKSHEET_SIZE.width,WORKSHEET_SIZE.height);
+  context.fillStyle=soft;context.beginPath();context.arc(1138,78,135,0,Math.PI*2);context.fill();
+  context.fillStyle=mixHex(accent,"#ffffff",.72);context.beginPath();context.arc(86,1695,100,0,Math.PI*2);context.fill();
+  context.fillStyle=accent;[[1120,210,8],[1150,235,5],[1100,252,4]].forEach(([x,y,r])=>{context.beginPath();context.arc(x,y,r,0,Math.PI*2);context.fill()});
+  roundedRect(context,55,55,1130,1644,34,"#ffffff",line);
+  roundedRect(context,55,55,1130,160,34,soft);context.fillStyle="#fff";context.fillRect(55,165,1130,50);
+  roundedRect(context,58,238,388,238,22,mixHex(accent,"#ffffff",.94),line);
+  roundedRect(context,438,238,388,238,22,mixHex(accent,"#ffffff",.94),line);
+  roundedRect(context,58,480,768,220,22,mixHex(accent,"#ffffff",.94),line);
+  [[58,790],[429,790],[800,790],[58,1295],[429,1295],[800,1295]].forEach(([x,y])=>roundedRect(context,x,y,365,340,24,mixHex(accent,"#ffffff",.96),line));
+  const text=(value,x,y,size,weight=700,color=ink)=>{context.fillStyle=color;context.font=`${weight} ${size}px "Noto Sans KR", sans-serif`;context.textBaseline="top";context.textAlign="left";context.fillText(value,x,y)};
+  const fit=(value,box,options)=>{const result=drawFittedText(context,value,box,options);if(result.shrunk||result.truncated)warnings.push(result);return result};
+
+  text("①",76,87,48,700,accent);fit(data.title,{x:145,y:88,width:660,height:78},{maxSize:46,minSize:30,weight:700,lineRatio:1.25,color:ink});
+  text("교과 연계",825,87,25,700,accent);fit(data.curriculum||"교과 연계를 입력하세요",{x:825,y:132,width:335,height:72},{maxSize:20,minSize:14,weight:500,lineRatio:1.45,color:data.curriculum?ink:"#a4a9b2"});
+  if(data.audience)fit(data.audience,{x:825,y:205,width:335,height:35},{maxSize:17,minSize:13,weight:600,color:"#5f6672",align:"right"});
+
+  text("학습 목표",76,258,26,700,accent);fit(data.goal||"학습 목표를 입력하세요",{x:76,y:310,width:350,height:145},{maxSize:24,minSize:16,weight:500,lineRatio:1.55,color:data.goal?ink:"#a4a9b2"});
+  text("준비물",455,258,26,700,accent);fit(data.materials||"준비물을 입력하세요",{x:455,y:310,width:350,height:145},{maxSize:24,minSize:16,weight:500,lineRatio:1.55,color:data.materials?ink:"#a4a9b2"});
+  text("수업 전",76,500,27,700,accent);text("생각해보기",76,543,27,700,accent);fit(data.thinking||"실험 전에 생각해 볼 내용을 입력하세요",{x:285,y:500,width:520,height:180},{maxSize:25,minSize:16,weight:500,lineRatio:1.55,color:data.thinking?ink:"#a4a9b2"});
+
+  const columns=[76,447,818],rows=[805,1310];
+  for(let index=0;index<6;index++){
+    const x=columns[index%3],y=rows[Math.floor(index/3)];
+    roundedRect(context,x,y,38,38,12,accent);text(`${index+1}`,x+12,y+6,20,700,"#fff");
+    fit(data.steps[index]||`${index+1}단계를 입력하세요`,{x:x+52,y:y+4,width:285,height:305},{maxSize:23,minSize:15,weight:500,lineRatio:1.55,color:data.steps[index]?ink:"#a4a9b2"});
+  }
+  text("MY LAB · EXPERIMENT WORKSHEET",840,1660,12,700,mixHex(accent,"#1d1d1f",.25));
+  return warnings;
+}
+
+function renderWorksheetPreview(){
+  cancelAnimationFrame(worksheetRenderFrame);worksheetRenderFrame=requestAnimationFrame(async()=>{
+    if(document.fonts?.ready)await document.fonts.ready;
+    const canvas=$("#worksheetCanvas");if(!canvas)return;
+    const warnings=drawWorksheet(canvas),status=$("#worksheetStatus");
+    if(status)status.textContent=warnings.some(item=>item.truncated)?"내용이 너무 길어 일부가 생략되었습니다. 문장을 줄여 주세요.":warnings.length?"긴 내용에 맞춰 글자 크기를 자동 조절했습니다.":"입력 내용이 실시간으로 반영됩니다.";
+  });
+}
+
+function switchPreview(tab){
+  $$("#previewTabs button").forEach(button=>button.classList.toggle("active",button.dataset.preview===tab));
+  $$("[data-preview-panel]").forEach(panel=>panel.classList.toggle("active",panel.dataset.previewPanel===tab));
+  if(tab==="worksheet")renderWorksheetPreview();
+}
+
+async function downloadWorksheet(){
+  const button=$("#downloadWorksheetButton");button.disabled=true;button.textContent="만드는 중…";
+  try{
+    if(document.fonts?.ready)await document.fonts.ready;
+    const canvas=document.createElement("canvas");canvas.width=2480;canvas.height=3508;drawWorksheet(canvas,2);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));if(!blob)throw new Error("이미지를 만들 수 없습니다.");
+    const url=URL.createObjectURL(blob),link=document.createElement("a"),safeName=(clean($("#nameInput").value)||"실험지").replace(/[\\/:*?\"<>|]/g,"_");
+    link.href=url;link.download=`${clean($("#myExperimentId").value)||"MY"}_${safeName}_실험지.png`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(error){console.error(error);alert(error.message)}finally{button.disabled=false;button.textContent="PNG 저장"}
+}
+
+function renderAll(){renderExperiments();renderCurriculum();renderMaterialsChecklist();renderReferencePreview();renderWorksheetPreview()}
 
 function getSyncConfig(){
   try{const value=JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)||"null");return value?.url&&value?.key?value:null}catch{return null}
@@ -387,7 +508,7 @@ async function syncToSheet(){
 function bindEvents(){
   $$(".bottom-tabs button").forEach(button=>button.addEventListener("click",()=>switchTab(button.dataset.tab)));
   $("#newExperimentButton").addEventListener("click",()=>newExperiment());$("#experimentForm").addEventListener("submit",saveExperiment);$("#deleteExperimentButton").addEventListener("click",deleteExperiment);
-  $("#addMaterialButton").addEventListener("click",()=>addMaterialRow());[$("#experimentSearch"),$("#experimentFieldFilter"),$("#experimentGradeFilter")].forEach(input=>["input","change"].forEach(ev=>input.addEventListener(ev,renderExperiments)));
+  $("#addMaterialButton").addEventListener("click",()=>{addMaterialRow();renderWorksheetPreview()});[$("#experimentSearch"),$("#experimentFieldFilter"),$("#experimentGradeFilter")].forEach(input=>["input","change"].forEach(ev=>input.addEventListener(ev,renderExperiments)));
   $("#chooseReferenceButton").addEventListener("click",openArchivePicker);$("#clearReferenceButton").addEventListener("click",()=>{$("#referenceId").value="";$("#referenceName").value="";renderReferenceSummary()});
   $("#closeArchiveDialog").addEventListener("click",()=>$("#archiveDialog").close());$("#archiveSearch").addEventListener("input",renderArchiveList);$("#loadArchiveFileButton").addEventListener("click",()=>$("#archiveFileInput").click());$("#archiveFileInput").addEventListener("change",event=>importArchiveFile(event.target.files[0]));
   [$ ("#materialYear"),$("#materialGrade"),$("#materialPeriod")].forEach(input=>input.addEventListener("change",renderMaterialsChecklist));$("#clearWeekChecks").addEventListener("click",clearWeekChecks);
@@ -396,6 +517,9 @@ function bindEvents(){
   $("#curriculumSearch").addEventListener("input",renderCurriculumLibrary);$("#curriculumYear").addEventListener("change",()=>{selectedDeckId="";renderCurriculum()});
   $("#slotCount").addEventListener("change",()=>{const year=currentCurriculumYear(),next=Number($("#slotCount").value);if(next===1&&state.placements.some(p=>p.year===year&&p.order===2)&&!confirm("두 번째 실험 배치는 숨겨집니다. 계속할까요?")){ $("#slotCount").value=2;return}state.slotCounts[year]=next;persist("주당 실험 수 저장됨");renderCurriculum()});
   $("#syncSettingsButton").addEventListener("click",configureSync);$("#syncButton").addEventListener("click",syncToSheet);
+  $("#previewTabs").addEventListener("click",event=>{const button=event.target.closest("button[data-preview]");if(button)switchPreview(button.dataset.preview)});
+  $("#experimentForm").addEventListener("input",renderWorksheetPreview);$("#experimentForm").addEventListener("change",renderWorksheetPreview);
+  $("#downloadWorksheetButton").addEventListener("click",downloadWorksheet);
 }
 
 boot();

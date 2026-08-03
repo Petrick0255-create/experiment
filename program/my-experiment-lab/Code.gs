@@ -9,7 +9,7 @@ var LAB_CONFIG = {
   archiveSpreadsheetId: '1Fbfaw3ZEE7KP6IzeNwp5kigbwt5W2kgufzS6Cdm_xck',
   archiveMasterSheet: '실험 마스터',
   archiveImageSheet: '이미지 파일',
-  experimentHeaders: ['내 실험 ID','실험명','참고 실험 ID','참고 실험명','분야','난이도','대상','학년','교과 연계','연계 단원','실험 목표','준비물 JSON','실험 순서','관찰·기록','메모','생성일','수정일'],
+  experimentHeaders: ['내 실험 ID','실험명','참고 실험 ID','참고 실험명','분야','난이도','대상','학년','교과 연계','연계 단원','실험 목표','준비물 JSON','실험 순서','관찰·기록','메모','생성일','수정일','생각해보기','실험지 배경색'],
   placementHeaders: ['배치 ID','연도','학년','월','주','순번','내 실험 ID','실험명','수정일'],
   materialHeaders: ['체크 ID','연도','학년','월','주','순번','내 실험 ID','실험명','준비물','수량','구매 링크','체크','수정일'],
   backupHeaders: ['백업 일시','데이터 종류','건수','전체 JSON'],
@@ -197,7 +197,7 @@ function readExperiments_(sheet) {
     var materials = [], steps = [];
     try { materials = JSON.parse(row[11] || '[]'); } catch (ignore) {}
     try { steps = JSON.parse(row[12] || '[]'); } catch (ignore2) { steps = String(row[12] || '').split(/\r?\n/).filter(Boolean); }
-    return {id:String(row[0]), name:String(row[1] || ''), referenceId:String(row[2] || ''), referenceName:String(row[3] || ''), field:String(row[4] || ''), difficulty:String(row[5] || ''), target:String(row[6] || ''), grade:String(row[7] || ''), curriculum:String(row[8] || ''), unit:String(row[9] || ''), goal:String(row[10] || ''), materials:materials, steps:steps, observation:String(row[13] || ''), note:String(row[14] || ''), createdAt:dateText_(row[15]), updatedAt:dateText_(row[16])};
+    return {id:String(row[0]), name:String(row[1] || ''), referenceId:String(row[2] || ''), referenceName:String(row[3] || ''), field:String(row[4] || ''), difficulty:String(row[5] || ''), target:String(row[6] || ''), grade:String(row[7] || ''), curriculum:String(row[8] || ''), unit:String(row[9] || ''), goal:String(row[10] || ''), materials:materials, steps:steps, observation:String(row[13] || ''), note:String(row[14] || ''), createdAt:dateText_(row[15]), updatedAt:dateText_(row[16]), thinking:String(row[17] || ''), worksheetColor:String(row[18] || '#6f93d6')};
   });
 }
 
@@ -221,7 +221,7 @@ function writePayload_(ss, payload) {
   var expById = {};
   experiments.forEach(function(item) { expById[item.id] = item; });
   var expRows = experiments.map(function(item) {
-    return [item.id,item.name,item.referenceId || '',item.referenceName || '',item.field || '',item.difficulty || '',item.target || '',item.grade || '',item.curriculum || '',item.unit || '',item.goal || '',JSON.stringify(item.materials || []),JSON.stringify(item.steps || []),item.observation || '',item.note || '',item.createdAt || stamp,item.updatedAt || stamp];
+    return [item.id,item.name,item.referenceId || '',item.referenceName || '',item.field || '',item.difficulty || '',item.target || '',item.grade || '',item.curriculum || '',item.unit || '',item.goal || '',JSON.stringify(item.materials || []),JSON.stringify(item.steps || []),item.observation || '',item.note || '',item.createdAt || stamp,item.updatedAt || stamp,item.thinking || '',item.worksheetColor || '#6f93d6'];
   });
   var placementRows = placements.map(function(item) {
     var experiment = expById[item.experimentId] || {};

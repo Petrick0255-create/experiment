@@ -73,6 +73,7 @@
                 <label class="wide">교과 연계<input id="curriculumInput" placeholder="예: 초-5-1-Ⅱ- 빛의 성질"></label>
                 <label class="wide">연계 단원<input id="unitInput" placeholder="예: 빛의 성질"></label>
                 <label class="wide">실험 목표<textarea id="goalInput" rows="3" placeholder="이 실험에서 확인하거나 만들고 싶은 것"></textarea></label>
+                <label class="wide">생각해보기<textarea id="thinkingInput" rows="3" placeholder="실험 전에 생각해 볼 질문이나 상황"></textarea></label>
               </div>
             </section>
 
@@ -85,7 +86,17 @@
             <section class="form-section">
               <div class="section-title"><div><p class="eyebrow">EXPERIMENT PLAN</p><h3>실험 설계</h3></div></div>
               <div class="form-grid">
-                <label class="wide">실험 순서<textarea id="stepsInput" rows="8" placeholder="한 줄에 한 단계씩 입력하세요."></textarea></label>
+                <div class="wide step-editor">
+                  <span class="field-label">실험 단계 6단계</span>
+                  <div class="step-input-grid">
+                    <label><b>1</b><textarea class="step-input" rows="3" placeholder="첫 번째 실험 단계"></textarea></label>
+                    <label><b>2</b><textarea class="step-input" rows="3" placeholder="두 번째 실험 단계"></textarea></label>
+                    <label><b>3</b><textarea class="step-input" rows="3" placeholder="세 번째 실험 단계"></textarea></label>
+                    <label><b>4</b><textarea class="step-input" rows="3" placeholder="네 번째 실험 단계"></textarea></label>
+                    <label><b>5</b><textarea class="step-input" rows="3" placeholder="다섯 번째 실험 단계"></textarea></label>
+                    <label><b>6</b><textarea class="step-input" rows="3" placeholder="여섯 번째 실험 단계"></textarea></label>
+                  </div>
+                </div>
                 <label class="wide">관찰·기록<textarea id="observationInput" rows="5" placeholder="관찰할 내용이나 기록 방법"></textarea></label>
                 <label class="wide">메모<textarea id="noteInput" rows="4" placeholder="수정 아이디어, 안전 유의사항 등"></textarea></label>
               </div>
@@ -93,19 +104,33 @@
               </div>
 
               <aside class="reference-preview" id="referencePreview" aria-label="참고 실험 미리보기">
-                <div class="reference-preview-empty" id="referencePreviewEmpty">
-                  <span>R</span>
-                  <h3>참고 실험 미리보기</h3>
-                  <p id="referencePreviewEmptyText">아카이브에서 실험을 선택하면 원본 정보와 실험지가 표시됩니다.</p>
+                <div class="preview-tabs" id="previewTabs">
+                  <button class="active" type="button" data-preview="reference">원본 실험지</button>
+                  <button type="button" data-preview="worksheet">자동 실험지</button>
                 </div>
-                <div class="reference-preview-content" id="referencePreviewContent" hidden>
-                  <div class="reference-preview-head">
-                    <div><p id="referencePreviewCode">ARCHIVE</p><h3 id="referencePreviewName">참고 실험</h3></div>
-                    <a id="openArchiveExperiment" href="../exp-archive/index.html" target="_blank" rel="noopener">아카이브에서 열기 ↗</a>
+                <div class="preview-panel active" data-preview-panel="reference">
+                  <div class="reference-preview-empty" id="referencePreviewEmpty">
+                    <span>R</span>
+                    <h3>참고 실험 미리보기</h3>
+                    <p id="referencePreviewEmptyText">아카이브에서 실험을 선택하면 원본 정보와 실험지가 표시됩니다.</p>
                   </div>
-                  <dl class="reference-info-list" id="referenceInfoList"></dl>
-                  <div class="reference-image-heading"><strong>실험지</strong><small>이미지를 누르면 원본을 엽니다.</small></div>
-                  <div class="reference-image-list" id="referenceImageList"></div>
+                  <div class="reference-preview-content" id="referencePreviewContent" hidden>
+                    <div class="reference-preview-head">
+                      <div><p id="referencePreviewCode">ARCHIVE</p><h3 id="referencePreviewName">참고 실험</h3></div>
+                      <a id="openArchiveExperiment" href="../exp-archive/index.html" target="_blank" rel="noopener">아카이브에서 열기 ↗</a>
+                    </div>
+                    <dl class="reference-info-list" id="referenceInfoList"></dl>
+                    <div class="reference-image-heading"><strong>실험지</strong><small>이미지를 누르면 원본을 엽니다.</small></div>
+                    <div class="reference-image-list" id="referenceImageList"></div>
+                  </div>
+                </div>
+                <div class="preview-panel worksheet-panel" data-preview-panel="worksheet">
+                  <div class="worksheet-toolbar">
+                    <div><p>WORKSHEET MAKER</p><strong>A4 실험지 자동 배치</strong></div>
+                    <div class="worksheet-tools"><label class="color-picker">배경 톤<input id="worksheetColorInput" type="color" value="#6f93d6" title="실험지 배경 톤 선택"></label><button class="button primary small" id="downloadWorksheetButton" type="button">PNG 저장</button></div>
+                  </div>
+                  <p class="worksheet-status" id="worksheetStatus">입력 내용이 실시간으로 반영됩니다.</p>
+                  <div class="worksheet-canvas-wrap"><canvas id="worksheetCanvas" width="1240" height="1754" aria-label="자동 생성 실험지 미리보기"></canvas></div>
                 </div>
               </aside>
             </div>
