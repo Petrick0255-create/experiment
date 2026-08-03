@@ -418,35 +418,44 @@ function drawWorksheet(canvas,exportScale=1){
   const context=canvas.getContext("2d"),scale=(canvas.width/WORKSHEET_SIZE.width)||exportScale;
   context.setTransform(scale,0,0,scale,0,0);context.clearRect(0,0,WORKSHEET_SIZE.width,WORKSHEET_SIZE.height);
   const data=worksheetValues(),warnings=[];
-  const accent=data.color,background=mixHex(accent,"#ffffff",.91),soft=mixHex(accent,"#ffffff",.82),line=mixHex(accent,"#ffffff",.62),ink="#202532";
+  const accent=data.color,background=mixHex(accent,"#ffffff",.95),soft=mixHex(accent,"#ffffff",.86),line=mixHex(accent,"#ffffff",.58),ink="#202532";
   context.fillStyle=background;context.fillRect(0,0,WORKSHEET_SIZE.width,WORKSHEET_SIZE.height);
-  context.fillStyle=soft;context.beginPath();context.arc(1138,78,135,0,Math.PI*2);context.fill();
-  context.fillStyle=mixHex(accent,"#ffffff",.72);context.beginPath();context.arc(86,1695,100,0,Math.PI*2);context.fill();
-  context.fillStyle=accent;[[1120,210,8],[1150,235,5],[1100,252,4]].forEach(([x,y,r])=>{context.beginPath();context.arc(x,y,r,0,Math.PI*2);context.fill()});
-  roundedRect(context,55,55,1130,1644,34,"#ffffff",line);
-  roundedRect(context,55,55,1130,160,34,soft);context.fillStyle="#fff";context.fillRect(55,165,1130,50);
-  roundedRect(context,58,238,388,238,22,mixHex(accent,"#ffffff",.94),line);
-  roundedRect(context,438,238,388,238,22,mixHex(accent,"#ffffff",.94),line);
-  roundedRect(context,58,480,768,220,22,mixHex(accent,"#ffffff",.94),line);
-  [[58,790],[429,790],[800,790],[58,1295],[429,1295],[800,1295]].forEach(([x,y])=>roundedRect(context,x,y,365,340,24,mixHex(accent,"#ffffff",.96),line));
+  roundedRect(context,55,45,1130,1664,28,"#ffffff",mixHex(accent,"#ffffff",.7));
+  roundedRect(context,55,45,1130,12,6,accent);
+  context.fillStyle=soft;context.beginPath();context.arc(1124,104,60,0,Math.PI*2);context.fill();
+  context.fillStyle=accent;[[1090,118,5],[1112,137,4],[1081,148,3]].forEach(([x,y,r])=>{context.beginPath();context.arc(x,y,r,0,Math.PI*2);context.fill()});
   const text=(value,x,y,size,weight=700,color=ink)=>{context.fillStyle=color;context.font=`${weight} ${size}px "Noto Sans KR", sans-serif`;context.textBaseline="top";context.textAlign="left";context.fillText(value,x,y)};
   const fit=(value,box,options)=>{const result=drawFittedText(context,value,box,options);if(result.shrunk||result.truncated)warnings.push(result);return result};
 
-  text("①",76,87,48,700,accent);fit(data.title,{x:145,y:88,width:660,height:78},{maxSize:46,minSize:30,weight:700,lineRatio:1.25,color:ink});
-  text("교과 연계",825,87,25,700,accent);fit(data.curriculum||"교과 연계를 입력하세요",{x:825,y:132,width:335,height:72},{maxSize:20,minSize:14,weight:500,lineRatio:1.45,color:data.curriculum?ink:"#a4a9b2"});
-  if(data.audience)fit(data.audience,{x:825,y:205,width:335,height:35},{maxSize:17,minSize:13,weight:600,color:"#5f6672",align:"right"});
+  text("EXPERIMENT WORKSHEET",77,76,13,700,accent);
+  text("①",76,108,46,700,accent);fit(data.title,{x:143,y:108,width:650,height:72},{maxSize:43,minSize:29,weight:700,lineRatio:1.25,color:ink});
+  text("교과 연계",835,83,18,700,accent);fit(data.curriculum||"교과 연계를 입력하세요",{x:835,y:113,width:310,height:56},{maxSize:18,minSize:13,weight:500,lineRatio:1.4,color:data.curriculum?ink:"#a4a9b2"});
+  if(data.audience)fit(data.audience,{x:835,y:171,width:310,height:30},{maxSize:15,minSize:12,weight:600,color:"#626b79",align:"right"});
+  context.strokeStyle=line;context.lineWidth=1.5;context.beginPath();context.moveTo(76,220);context.lineTo(1164,220);context.stroke();
 
-  text("학습 목표",76,258,26,700,accent);fit(data.goal||"학습 목표를 입력하세요",{x:76,y:310,width:350,height:145},{maxSize:24,minSize:16,weight:500,lineRatio:1.55,color:data.goal?ink:"#a4a9b2"});
-  text("준비물",455,258,26,700,accent);fit(data.materials||"준비물을 입력하세요",{x:455,y:310,width:350,height:145},{maxSize:24,minSize:16,weight:500,lineRatio:1.55,color:data.materials?ink:"#a4a9b2"});
-  text("수업 전",76,500,27,700,accent);text("생각해보기",76,543,27,700,accent);fit(data.thinking||"실험 전에 생각해 볼 내용을 입력하세요",{x:285,y:500,width:520,height:180},{maxSize:25,minSize:16,weight:500,lineRatio:1.55,color:data.thinking?ink:"#a4a9b2"});
+  context.fillStyle=accent;context.fillRect(76,258,34,4);text("학습 목표",76,274,23,700,ink);
+  fit(data.goal||"학습 목표를 입력하세요",{x:76,y:320,width:505,height:112},{maxSize:21,minSize:15,weight:500,lineRatio:1.55,color:data.goal?ink:"#a4a9b2"});
+  context.strokeStyle=mixHex(accent,"#ffffff",.72);context.beginPath();context.moveTo(618,258);context.lineTo(618,438);context.stroke();
+  context.fillStyle=accent;context.fillRect(655,258,34,4);text("준비물",655,274,23,700,ink);
+  fit(data.materials||"준비물을 입력하세요",{x:655,y:320,width:490,height:112},{maxSize:21,minSize:15,weight:500,lineRatio:1.55,color:data.materials?ink:"#a4a9b2"});
+  context.strokeStyle=line;context.beginPath();context.moveTo(76,463);context.lineTo(1164,463);context.stroke();
 
-  const columns=[76,447,818],rows=[805,1310];
+  context.fillStyle=accent;context.fillRect(76,500,34,4);text("수업 전 생각해보기",76,516,23,700,ink);
+  fit(data.thinking||"실험 전에 생각해 볼 내용을 입력하세요",{x:305,y:502,width:840,height:112},{maxSize:22,minSize:15,weight:500,lineRatio:1.55,color:data.thinking?ink:"#a4a9b2"});
+  context.strokeStyle=line;context.beginPath();context.moveTo(76,640);context.lineTo(1164,640);context.stroke();
+  text("실험 과정",76,675,25,700,ink);text("사진을 붙이고 각 단계의 과정을 정리합니다.",205,682,14,500,"#7b8390");
+
+  const columns=[76,447,818],rows=[735,1215];
   for(let index=0;index<6;index++){
     const x=columns[index%3],y=rows[Math.floor(index/3)];
-    roundedRect(context,x,y,38,38,12,accent);text(`${index+1}`,x+12,y+6,20,700,"#fff");
-    fit(data.steps[index]||`${index+1}단계를 입력하세요`,{x:x+52,y:y+4,width:285,height:305},{maxSize:23,minSize:15,weight:500,lineRatio:1.55,color:data.steps[index]?ink:"#a4a9b2"});
+    text(`STEP ${String(index+1).padStart(2,"0")}`,x,y,14,700,accent);
+    context.save();context.setLineDash([8,7]);roundedRect(context,x,y+30,346,220,15,"",mixHex(accent,"#ffffff",.52));context.restore();
+    context.strokeStyle=mixHex(accent,"#ffffff",.5);context.lineWidth=2;context.beginPath();context.moveTo(x+154,y+129);context.lineTo(x+192,y+129);context.moveTo(x+173,y+110);context.lineTo(x+173,y+148);context.stroke();
+    context.textAlign="center";context.fillStyle="#a0a7b1";context.font='500 13px "Noto Sans KR", sans-serif';context.fillText("실험 사진",x+173,y+164);context.textAlign="left";
+    roundedRect(context,x,y+270,36,36,10,accent);text(`${index+1}`,x+12,y+276,18,700,"#fff");
+    fit(data.steps[index]||`${index+1}단계를 입력하세요`,{x:x+50,y:y+270,width:296,height:140},{maxSize:20,minSize:14,weight:500,lineRatio:1.5,color:data.steps[index]?ink:"#a4a9b2"});
   }
-  text("MY LAB · EXPERIMENT WORKSHEET",840,1660,12,700,mixHex(accent,"#1d1d1f",.25));
+  text("MY LAB · EXPERIMENT WORKSHEET",852,1668,11,700,mixHex(accent,"#1d1d1f",.25));
   return warnings;
 }
 
