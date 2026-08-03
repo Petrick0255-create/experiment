@@ -1,6 +1,7 @@
 const STORAGE_KEY="my-experiment-lab-state-v1";
 const SYNC_CONFIG_KEY="my-experiment-lab-sync-config";
 const ARCHIVE_STORAGE_KEY="experiment-archive-working-v2";
+const CURRICULUM_STORAGE_KEY="my-experiment-lab-curriculum-units-v1";
 const GRADES=["7세","1학년","2학년","3학년","4학년","5학년","6학년","중등"];
 const MONTHS=Array.from({length:12},(_,i)=>i+1);
 const WEEKS=[1,2,3,4];
@@ -12,6 +13,7 @@ const escapeHtml=value=>clean(value).replace(/[&<>"']/g,char=>({"&":"&amp;","<":
 
 let state=loadState();
 let archiveExperiments=loadArchiveStorage();
+let curriculumUnits=loadCurriculumStorage();
 let selectedExperimentId="";
 let selectedDeckId="";
 let currentTab="experiments";
@@ -54,6 +56,33 @@ function persist(message="브라우저에 저장됨",dirty=true){
 
 function loadArchiveStorage(){
   try{return normalizeArchive(JSON.parse(localStorage.getItem(ARCHIVE_STORAGE_KEY)||"null"))}catch{return[]}
+}
+
+function normalizeCurriculumUnits(raw){
+  const seen=new Set();
+  return(Array.isArray(raw)?raw:[]).map(item=>({grade:clean(item.grade),semester:clean(item.semester),unitName:clean(item.unitName),content:clean(item.content),unit:clean(item.unit)})).filter(item=>{
+    const key=[item.grade,item.semester,item.unit].join("|");if(!item.unit||seen.has(key))return false;seen.add(key);return true;
+  });
+}
+
+function loadCurriculumStorage(){
+  try{return normalizeCurriculumUnits(JSON.parse(localStorage.getItem(CURRICULUM_STORAGE_KEY)||"[]"))}catch{return[]}
+}
+
+function cacheCurriculumUnits(){localStorage.setItem(CURRICULUM_STORAGE_KEY,JSON.stringify(curriculumUnits))}
+
+function gradeKey(value){
+  const text=clean(value);if(text.includes("7세"))return"7세";if(text.includes("중"))return"중등";const match=text.match(/[1-6]/);return match?`${match[0]}학년`:text;
+}
+
+function renderCurriculumOptions(selectedValue=""){
+  const select=$("#curriculumInput");if(!select)return;
+  const selected=clean(selectedValue||select.value),grade=gradeKey($("#gradeInput")?.value),matched=curriculumUnits.filter(item=>grade&&gradeKey(item.grade)===grade),items=matched.length?matched:curriculumUnits;
+  select.innerHTML='<option value="">교과 연계 단원 선택</option>';
+  const groups=new Map();items.forEach(item=>{const semester=item.semester?(item.semester.includes("학기")?item.semester:`${item.semester}학기`):"";const label=[item.grade,semester].filter(Boolean).join(" · ")||"교과 단원";if(!groups.has(label))groups.set(label,[]);groups.get(label).push(item)});
+  groups.forEach((group,label)=>{const optgroup=document.createElement("optgroup");optgroup.label=label;group.forEach(item=>{const option=document.createElement("option");option.value=item.unit;option.textContent=item.unit;option.title=[item.unitName,item.content].filter(Boolean).join(" — ");optgroup.append(option)});select.append(optgroup)});
+  if(selected&&!items.some(item=>item.unit===selected)){const option=document.createElement("option");option.value=selected;option.textContent=`기존 값 · ${selected}`;select.append(option)}
+  select.value=selected;
 }
 
 function normalizeArchive(raw){
@@ -144,7 +173,7 @@ function openEditor(id){
   const item=state.experiments.find(x=>x.id===id);if(!item)return;
   selectedExperimentId=id;$("#editorEmpty").hidden=true;$("#experimentForm").hidden=false;
   $("#myExperimentId").value=item.id;$("#nameInput").value=item.name;$("#fieldInput").value=item.field;$("#difficultyInput").value=item.difficulty;
-  $("#targetInput").value=item.target;$("#gradeInput").value=item.grade;$("#curriculumInput").value=item.curriculum;$("#unitInput").value=item.unit;
+  $("#targetInput").value=item.target;$("#gradeInput").value=item.grade;renderCurriculumOptions(item.curriculum);$("#unitInput").value=item.unit;
   $("#goalInput").value=item.goal;$("#thinkingInput").value=item.thinking;$("#worksheetColorInput").value=item.worksheetColor||"#6f93d6";$$('.step-input').forEach((input,index)=>{input.value=item.steps[index]||""});$("#observationInput").value=item.observation;$("#noteInput").value=item.note;
   $("#referenceId").value=item.referenceId;$("#referenceName").value=item.referenceName;$("#editorTitle").textContent=item.name||"새 실험";
   renderReferenceSummary();renderMaterialRows(item.materials);renderExperiments();renderWorksheetPreview();
@@ -236,7 +265,7 @@ function selectReference(item){
   if(!clean($("#nameInput").value))$("#nameInput").value=item.name+" 새 계획";
   if(!$("#fieldInput").value)$("#fieldInput").value=item.field;if(!$("#difficultyInput").value)$("#difficultyInput").value=item.difficulty;
   if(!$("#targetInput").value)$("#targetInput").value=item.target;if(!$("#gradeInput").value)$("#gradeInput").value=item.grade;
-  if(!clean($("#curriculumInput").value))$("#curriculumInput").value=item.curriculum;if(!clean($("#unitInput").value))$("#unitInput").value=item.unit;
+  const currentCurriculum=clean($("#curriculumInput").value);renderCurriculumOptions(currentCurriculum||item.curriculum);if(!clean($("#unitInput").value))$("#unitInput").value=item.unit;
   renderReferenceSummary();renderWorksheetPreview();$("#archiveDialog").close();
 }
 
@@ -485,7 +514,7 @@ async function downloadWorksheet(){
   }catch(error){console.error(error);alert(error.message)}finally{button.disabled=false;button.textContent="PNG 저장"}
 }
 
-function renderAll(){renderExperiments();renderCurriculum();renderMaterialsChecklist();renderReferencePreview();renderWorksheetPreview()}
+function renderAll(){renderExperiments();renderCurriculum();renderMaterialsChecklist();renderReferencePreview();renderCurriculumOptions($("#curriculumInput")?.value);renderWorksheetPreview()}
 
 function getSyncConfig(){
   try{const value=JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)||"null");return value?.url&&value?.key?value:null}catch{return null}
@@ -500,7 +529,7 @@ function configureSync(){
 async function loadFromSheet(showAlert=true){
   const config=getSyncConfig()||(showAlert?configureSync():null);if(!config)return false;const button=$("#syncButton");button.disabled=true;button.textContent="불러오는 중…";
   try{const sep=config.url.includes("?")?"&":"?",response=await fetch(`${config.url}${sep}key=${encodeURIComponent(config.key)}&action=load&_=${Date.now()}`,{cache:"no-store"});const result=await response.json();if(!result.ok)throw new Error(result.message||"불러오기 실패");
-    archiveExperiments=normalizeArchive(result.payload.archiveExperiments||[]);cacheArchiveExperiments();state=normalizeState({...result.payload,dirty:false});persist(`시트에서 불러옴 · 내 실험 ${state.experiments.length}개 · 참고 ${archiveExperiments.length}개`,false);renderAll();return true;
+    archiveExperiments=normalizeArchive(result.payload.archiveExperiments||[]);cacheArchiveExperiments();curriculumUnits=normalizeCurriculumUnits(result.payload.curriculumUnits||[]);cacheCurriculumUnits();state=normalizeState({...result.payload,dirty:false});persist(`시트에서 불러옴 · 내 실험 ${state.experiments.length}개 · 교과 단원 ${curriculumUnits.length}개`,false);renderAll();return true;
   }catch(error){console.error(error);if(showAlert)alert(`시트 정보를 불러오지 못했습니다.\n${error.message}`);$("#saveState").textContent="시트 불러오기 실패";return false}
   finally{button.disabled=false;button.textContent="시트 동기화"}
 }
@@ -510,7 +539,7 @@ async function syncToSheet(){
   const button=$("#syncButton");button.disabled=true;button.textContent="동기화 중…";$("#saveState").textContent="백업 및 시트 갱신 중";
   try{const payload={version:1,experiments:state.experiments,placements:state.placements,checks:state.checks,slotCounts:state.slotCounts,updatedAt:new Date().toISOString()};
     const response=await fetch(config.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:config.key,action:"sync",payload})});const result=await response.json();if(!result.ok)throw new Error(result.message||"동기화 실패");
-    archiveExperiments=normalizeArchive(result.payload.archiveExperiments||[]);cacheArchiveExperiments();state=normalizeState({...result.payload,dirty:false});persist(`동기화 완료 · 내 실험 ${state.experiments.length}개 · 참고 ${archiveExperiments.length}개`,false);renderAll();alert(`동기화가 완료되었습니다.\n내 실험 ${state.experiments.length}개 · 배치 ${state.placements.length}개\n아카이브 참고 목록 ${archiveExperiments.length}개`);
+    archiveExperiments=normalizeArchive(result.payload.archiveExperiments||[]);cacheArchiveExperiments();curriculumUnits=normalizeCurriculumUnits(result.payload.curriculumUnits||[]);cacheCurriculumUnits();state=normalizeState({...result.payload,dirty:false});persist(`동기화 완료 · 내 실험 ${state.experiments.length}개 · 교과 단원 ${curriculumUnits.length}개`,false);renderAll();alert(`동기화가 완료되었습니다.\n내 실험 ${state.experiments.length}개 · 배치 ${state.placements.length}개\n교과 연계 단원 ${curriculumUnits.length}개`);
   }catch(error){console.error(error);$("#saveState").textContent="동기화 실패";alert(`동기화하지 못했습니다.\n${error.message}`)}finally{button.disabled=false;button.textContent="시트 동기화"}
 }
 
@@ -529,6 +558,7 @@ function bindEvents(){
   $("#previewTabs").addEventListener("click",event=>{const button=event.target.closest("button[data-preview]");if(button)switchPreview(button.dataset.preview)});
   $("#experimentForm").addEventListener("input",renderWorksheetPreview);$("#experimentForm").addEventListener("change",renderWorksheetPreview);
   $("#downloadWorksheetButton").addEventListener("click",downloadWorksheet);
+  $("#gradeInput").addEventListener("change",()=>renderCurriculumOptions(""));
 }
 
 boot();

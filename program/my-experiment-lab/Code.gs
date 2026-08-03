@@ -6,6 +6,7 @@ var LAB_CONFIG = {
   backupSheet: '백업',
   guideSheet: '사용 안내',
   settingSheet: '설정',
+  curriculumSheet: '교과정리',
   archiveSpreadsheetId: '1Fbfaw3ZEE7KP6IzeNwp5kigbwt5W2kgufzS6Cdm_xck',
   archiveMasterSheet: '실험 마스터',
   archiveImageSheet: '이미지 파일',
@@ -122,9 +123,27 @@ function readPayload_(ss) {
   var experiments = readExperiments_(ss.getSheetByName(LAB_CONFIG.experimentSheet));
   var placements = readPlacements_(ss.getSheetByName(LAB_CONFIG.placementSheet));
   var checks = readChecks_(ss.getSheetByName(LAB_CONFIG.materialSheet));
+  var curriculumUnits = readCurriculumUnits_(ss);
   var slotCounts = {};
   try { slotCounts = JSON.parse(ss.getSheetByName(LAB_CONFIG.settingSheet).getRange('B2').getDisplayValue() || '{}'); } catch (ignore) {}
-  return {version:1, experiments:experiments, placements:placements, checks:checks, slotCounts:slotCounts, archiveExperiments:archiveExperiments, updatedAt:new Date().toISOString()};
+  return {version:1, experiments:experiments, placements:placements, checks:checks, slotCounts:slotCounts, archiveExperiments:archiveExperiments, curriculumUnits:curriculumUnits, updatedAt:new Date().toISOString()};
+}
+
+function readCurriculumUnits_(ss) {
+  var sheet = ss.getSheetByName(LAB_CONFIG.curriculumSheet);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  var required = ['학년','학기','단원명','내용','단원'], indexes = {};
+  required.forEach(function(header) {
+    var index = headers.indexOf(header);
+    if (index < 0) throw new Error('교과정리 시트에 ' + header + ' 열이 없습니다.');
+    indexes[header] = index;
+  });
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getDisplayValues().filter(function(row) {
+    return String(row[indexes['단원']] || '').trim();
+  }).map(function(row) {
+    return {grade:String(row[indexes['학년']] || ''),semester:String(row[indexes['학기']] || ''),unitName:String(row[indexes['단원명']] || ''),content:String(row[indexes['내용']] || ''),unit:String(row[indexes['단원']] || '')};
+  });
 }
 
 function readSourceArchiveExperiments_() {
