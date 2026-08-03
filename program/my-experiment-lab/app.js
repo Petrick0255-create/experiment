@@ -80,7 +80,7 @@ function renderCurriculumOptions(selectedValue=""){
   const selected=clean(selectedValue||select.value),grade=gradeKey($("#gradeInput")?.value),matched=curriculumUnits.filter(item=>grade&&gradeKey(item.grade)===grade),items=matched.length?matched:curriculumUnits;
   select.innerHTML='<option value="">교과 연계 단원 선택</option>';
   const groups=new Map();items.forEach(item=>{const semester=item.semester?(item.semester.includes("학기")?item.semester:`${item.semester}학기`):"";const label=[item.grade,semester].filter(Boolean).join(" · ")||"교과 단원";if(!groups.has(label))groups.set(label,[]);groups.get(label).push(item)});
-  groups.forEach((group,label)=>{const optgroup=document.createElement("optgroup");optgroup.label=label;group.forEach(item=>{const option=document.createElement("option");option.value=item.unit;option.textContent=item.unit;option.title=[item.unitName,item.content].filter(Boolean).join(" — ");optgroup.append(option)});select.append(optgroup)});
+  groups.forEach((group,label)=>{const optgroup=document.createElement("optgroup");optgroup.label=label;group.forEach(item=>{const option=document.createElement("option");option.value=item.unit;option.textContent=item.unit.replace(/\r?\n/g," / ");option.title=[item.unitName,item.content].filter(Boolean).join(" — ");optgroup.append(option)});select.append(optgroup)});
   if(selected&&!items.some(item=>item.unit===selected)){const option=document.createElement("option");option.value=selected;option.textContent=`기존 값 · ${selected}`;select.append(option)}
   select.value=selected;
 }
@@ -439,7 +439,13 @@ function drawFittedText(context,text,box,options={}){
   }
   context.fillStyle=options.color||"#1d1d1f";context.textBaseline="top";context.textAlign=options.align||"left";
   const x=options.align==="right"?box.x+box.width:options.align==="center"?box.x+box.width/2:box.x;
-  lines.forEach((line,index)=>context.fillText(line,x,box.y+index*lineHeight));
+  lines.forEach((line,index)=>{
+    const y=box.y+index*lineHeight,characters=[...line],measured=context.measureText(line).width;
+    if(options.justify&&index<lines.length-1&&characters.length>1&&measured>box.width*.7){
+      const widths=characters.map(char=>context.measureText(char).width),spacing=Math.max(0,(box.width-widths.reduce((sum,width)=>sum+width,0))/(characters.length-1));let cursor=box.x;
+      characters.forEach((char,charIndex)=>{context.fillText(char,cursor,y);cursor+=widths[charIndex]+(charIndex<characters.length-1?spacing:0)});
+    }else context.fillText(line,x,y);
+  });
   return{shrunk:size<maxSize,truncated};
 }
 
@@ -458,19 +464,19 @@ function drawWorksheet(canvas,exportScale=1){
 
   text("EXPERIMENT WORKSHEET",77,76,13,700,accent);
   text("①",76,108,46,700,accent);fit(data.title,{x:143,y:108,width:650,height:72},{maxSize:43,minSize:29,weight:700,lineRatio:1.25,color:ink});
-  text("교과 연계",835,83,18,700,accent);fit(data.curriculum||"교과 연계를 입력하세요",{x:835,y:113,width:310,height:56},{maxSize:18,minSize:13,weight:500,lineRatio:1.4,color:data.curriculum?ink:"#a4a9b2"});
-  if(data.audience)fit(data.audience,{x:835,y:171,width:310,height:30},{maxSize:15,minSize:12,weight:600,color:"#626b79",align:"right"});
+  text("교과 연계",835,83,18,700,accent);fit(data.curriculum||"교과 연계를 입력하세요",{x:835,y:113,width:310,height:72},{maxSize:18,minSize:12,weight:500,lineRatio:1.28,color:data.curriculum?ink:"#a4a9b2"});
+  if(data.audience)fit(data.audience,{x:835,y:194,width:310,height:22},{maxSize:14,minSize:11,weight:600,color:"#626b79",align:"right"});
   context.strokeStyle=line;context.lineWidth=1.5;context.beginPath();context.moveTo(76,220);context.lineTo(1164,220);context.stroke();
 
   context.fillStyle=accent;context.fillRect(76,258,34,4);text("학습 목표",76,274,23,700,ink);
-  fit(data.goal||"학습 목표를 입력하세요",{x:76,y:320,width:505,height:112},{maxSize:21,minSize:15,weight:500,lineRatio:1.55,color:data.goal?ink:"#a4a9b2"});
+  fit(data.goal||"학습 목표를 입력하세요",{x:76,y:320,width:505,height:112},{maxSize:21,minSize:15,weight:500,lineRatio:1.34,color:data.goal?ink:"#a4a9b2"});
   context.strokeStyle=mixHex(accent,"#ffffff",.72);context.beginPath();context.moveTo(618,258);context.lineTo(618,438);context.stroke();
   context.fillStyle=accent;context.fillRect(655,258,34,4);text("준비물",655,274,23,700,ink);
   fit(data.materials||"준비물을 입력하세요",{x:655,y:320,width:490,height:112},{maxSize:21,minSize:15,weight:500,lineRatio:1.55,color:data.materials?ink:"#a4a9b2"});
   context.strokeStyle=line;context.beginPath();context.moveTo(76,463);context.lineTo(1164,463);context.stroke();
 
   context.fillStyle=accent;context.fillRect(76,500,34,4);text("수업 전 생각해보기",76,516,23,700,ink);
-  fit(data.thinking||"실험 전에 생각해 볼 내용을 입력하세요",{x:305,y:502,width:840,height:112},{maxSize:22,minSize:15,weight:500,lineRatio:1.55,color:data.thinking?ink:"#a4a9b2"});
+  fit(data.thinking||"실험 전에 생각해 볼 내용을 입력하세요",{x:305,y:502,width:840,height:112},{maxSize:22,minSize:15,weight:500,lineRatio:1.34,color:data.thinking?ink:"#a4a9b2"});
   context.strokeStyle=line;context.beginPath();context.moveTo(76,640);context.lineTo(1164,640);context.stroke();
   text("실험 과정",76,675,25,700,ink);text("사진을 붙이고 각 단계의 과정을 정리합니다.",205,682,14,500,"#7b8390");
 
@@ -482,7 +488,7 @@ function drawWorksheet(canvas,exportScale=1){
     context.strokeStyle=mixHex(accent,"#ffffff",.5);context.lineWidth=2;context.beginPath();context.moveTo(x+154,y+129);context.lineTo(x+192,y+129);context.moveTo(x+173,y+110);context.lineTo(x+173,y+148);context.stroke();
     context.textAlign="center";context.fillStyle="#a0a7b1";context.font='500 13px "Noto Sans KR", sans-serif';context.fillText("실험 사진",x+173,y+164);context.textAlign="left";
     roundedRect(context,x,y+270,36,36,10,accent);text(`${index+1}`,x+12,y+276,18,700,"#fff");
-    fit(data.steps[index]||`${index+1}단계를 입력하세요`,{x:x+50,y:y+270,width:296,height:140},{maxSize:20,minSize:14,weight:500,lineRatio:1.5,color:data.steps[index]?ink:"#a4a9b2"});
+    fit(data.steps[index]||`${index+1}단계를 입력하세요`,{x:x+50,y:y+270,width:296,height:140},{maxSize:20,minSize:14,weight:500,lineRatio:1.42,justify:true,color:data.steps[index]?ink:"#a4a9b2"});
   }
   text("MY LAB · EXPERIMENT WORKSHEET",852,1668,11,700,mixHex(accent,"#1d1d1f",.25));
   return warnings;
