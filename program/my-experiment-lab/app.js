@@ -109,7 +109,7 @@ function normalizeArchive(raw){
 function boot(){
   const year=new Date().getFullYear();
   $("#materialYear").value=year;$("#curriculumYear").value=year;
-  buildGradeOptions();buildPeriodOptions();buildGradeTabs();bindEvents();
+  buildGradeOptions();buildPeriodOptions();buildGradeTabs();setupWorksheetModeControl();bindEvents();
   renderAll();
   const config=getSyncConfig();
   if(config&&!state.dirty)loadFromSheet(false);
@@ -449,48 +449,63 @@ function drawFittedText(context,text,box,options={}){
   return{shrunk:size<maxSize,truncated};
 }
 
+function setupWorksheetModeControl(){
+  const tools=$(".worksheet-tools");if(!tools||$("#worksheetMode"))return;
+  const label=document.createElement("label");label.className="color-picker";label.textContent="유형";
+  const select=document.createElement("select");select.id="worksheetMode";select.innerHTML='<option value="auto">자동</option><option value="low">저학년용</option><option value="high">고학년용</option>';select.style.cssText="height:25px;padding:0 5px;border:0;border-radius:5px;background:#f3f5f8;color:#334057;font-size:9px;font-weight:700;outline:0";
+  label.append(select);tools.prepend(label);select.addEventListener("change",renderWorksheetPreview);
+}
+
+function worksheetMode(){
+  const selected=$("#worksheetMode")?.value||"auto";if(selected!=="auto")return selected;
+  return["7세","1학년","2학년"].includes(gradeKey($("#gradeInput")?.value))?"low":"high";
+}
+
+function worksheetModeName(){return worksheetMode()==="low"?"저학년용":"고학년용"}
+
 function drawWorksheet(canvas,exportScale=1){
   const context=canvas.getContext("2d"),scale=(canvas.width/WORKSHEET_SIZE.width)||exportScale;
   context.setTransform(scale,0,0,scale,0,0);context.clearRect(0,0,WORKSHEET_SIZE.width,WORKSHEET_SIZE.height);
-  const data=worksheetValues(),warnings=[];
-  const accent=data.color,background=mixHex(accent,"#ffffff",.95),soft=mixHex(accent,"#ffffff",.86),line=mixHex(accent,"#ffffff",.58),ink="#202532";
+  const data=worksheetValues(),warnings=[],isLow=worksheetMode()==="low";
+  const accent=data.color,background=mixHex(accent,"#ffffff",isLow ? .89 : .95),soft=mixHex(accent,"#ffffff",isLow ? .77 : .86),line=mixHex(accent,"#ffffff",isLow ? .48 : .58),ink="#202532";
   context.fillStyle=background;context.fillRect(0,0,WORKSHEET_SIZE.width,WORKSHEET_SIZE.height);
-  roundedRect(context,55,45,1130,1664,28,"#ffffff",mixHex(accent,"#ffffff",.7));
-  roundedRect(context,55,45,1130,12,6,accent);
-  context.fillStyle=soft;context.beginPath();context.arc(1124,104,60,0,Math.PI*2);context.fill();
-  context.fillStyle=accent;[[1090,118,5],[1112,137,4],[1081,148,3]].forEach(([x,y,r])=>{context.beginPath();context.arc(x,y,r,0,Math.PI*2);context.fill()});
+  roundedRect(context,55,45,1130,1664,isLow?40:28,"#ffffff",mixHex(accent,"#ffffff",.7));
+  roundedRect(context,55,45,1130,isLow?18:12,isLow?9:6,accent);
+  context.fillStyle=soft;context.beginPath();context.arc(1124,104,isLow?74:60,0,Math.PI*2);context.fill();
+  context.fillStyle=accent;const dots=isLow?[[1068,103,7],[1100,139,5],[1143,153,9],[101,1664,7],[126,1642,4]]:[[1090,118,5],[1112,137,4],[1081,148,3]];dots.forEach(([x,y,r])=>{context.beginPath();context.arc(x,y,r,0,Math.PI*2);context.fill()});
   const text=(value,x,y,size,weight=700,color=ink)=>{context.fillStyle=color;context.font=`${weight} ${size}px "Noto Sans KR", sans-serif`;context.textBaseline="top";context.textAlign="left";context.fillText(value,x,y)};
   const fit=(value,box,options)=>{const result=drawFittedText(context,value,box,options);if(result.shrunk||result.truncated)warnings.push(result);return result};
+  const sectionLabel=(label,x,y,width)=>{if(isLow){roundedRect(context,x,y,width,37,18,soft);text(label,x+16,y+7,18,700,accent)}else{context.fillStyle=accent;context.fillRect(x,y,34,4);text(label,x,y+16,23,700,ink)}};
 
-  text("EXPERIMENT WORKSHEET",77,76,13,700,accent);
-  text("①",76,108,46,700,accent);fit(data.title,{x:143,y:108,width:650,height:72},{maxSize:43,minSize:29,weight:700,lineRatio:1.25,color:ink});
+  text(isLow?"MY LITTLE SCIENCE LAB":"EXPERIMENT WORKSHEET",77,76,isLow?14:13,700,accent);
+  text("①",76,108,isLow?50:46,700,accent);fit(data.title,{x:143,y:108,width:650,height:72},{maxSize:isLow?45:43,minSize:29,weight:700,lineRatio:1.25,color:ink});
   text("교과 연계",835,83,18,700,accent);fit(data.curriculum||"교과 연계를 입력하세요",{x:835,y:113,width:310,height:72},{maxSize:18,minSize:12,weight:500,lineRatio:1.28,color:data.curriculum?ink:"#a4a9b2"});
   if(data.audience)fit(data.audience,{x:835,y:194,width:310,height:22},{maxSize:14,minSize:11,weight:600,color:"#626b79",align:"right"});
   context.strokeStyle=line;context.lineWidth=1.5;context.beginPath();context.moveTo(76,220);context.lineTo(1164,220);context.stroke();
 
-  context.fillStyle=accent;context.fillRect(76,258,34,4);text("학습 목표",76,274,23,700,ink);
+  sectionLabel("학습 목표",76,258,isLow?126:0);
   fit(data.goal||"학습 목표를 입력하세요",{x:76,y:320,width:505,height:112},{maxSize:21,minSize:15,weight:500,lineRatio:1.34,color:data.goal?ink:"#a4a9b2"});
   context.strokeStyle=mixHex(accent,"#ffffff",.72);context.beginPath();context.moveTo(618,258);context.lineTo(618,438);context.stroke();
-  context.fillStyle=accent;context.fillRect(655,258,34,4);text("준비물",655,274,23,700,ink);
+  sectionLabel("준비물",655,258,isLow?103:0);
   fit(data.materials||"준비물을 입력하세요",{x:655,y:320,width:490,height:112},{maxSize:21,minSize:15,weight:500,lineRatio:1.55,color:data.materials?ink:"#a4a9b2"});
   context.strokeStyle=line;context.beginPath();context.moveTo(76,463);context.lineTo(1164,463);context.stroke();
 
-  context.fillStyle=accent;context.fillRect(76,500,34,4);text("수업 전 생각해보기",76,516,23,700,ink);
+  sectionLabel(isLow?"생각 톡톡":"수업 전 생각해보기",76,500,isLow?116:0);
   fit(data.thinking||"실험 전에 생각해 볼 내용을 입력하세요",{x:305,y:502,width:840,height:112},{maxSize:22,minSize:15,weight:500,lineRatio:1.34,color:data.thinking?ink:"#a4a9b2"});
   context.strokeStyle=line;context.beginPath();context.moveTo(76,640);context.lineTo(1164,640);context.stroke();
-  text("실험 과정",76,675,25,700,ink);text("사진을 붙이고 각 단계의 과정을 정리합니다.",205,682,14,500,"#7b8390");
+  text(isLow?"차근차근 실험해요":"실험 과정",76,675,isLow?27:25,700,isLow?accent:ink);text("사진을 붙이고 각 단계의 과정을 정리합니다.",isLow?300:205,682,14,500,"#7b8390");
 
   const columns=[76,447,818],rows=[735,1215];
   for(let index=0;index<6;index++){
     const x=columns[index%3],y=rows[Math.floor(index/3)];
-    text(`STEP ${String(index+1).padStart(2,"0")}`,x,y,14,700,accent);
-    context.save();context.setLineDash([8,7]);roundedRect(context,x,y+30,346,220,15,"",mixHex(accent,"#ffffff",.52));context.restore();
+    text(isLow?`${index+1}단계`:`STEP ${String(index+1).padStart(2,"0")}`,x,y,isLow?16:14,700,accent);
+    context.save();context.setLineDash(isLow?[6,6]:[8,7]);roundedRect(context,x,y+30,346,220,isLow?24:15,"",mixHex(accent,"#ffffff",.52));context.restore();
     context.strokeStyle=mixHex(accent,"#ffffff",.5);context.lineWidth=2;context.beginPath();context.moveTo(x+154,y+129);context.lineTo(x+192,y+129);context.moveTo(x+173,y+110);context.lineTo(x+173,y+148);context.stroke();
-    context.textAlign="center";context.fillStyle="#a0a7b1";context.font='500 13px "Noto Sans KR", sans-serif';context.fillText("실험 사진",x+173,y+164);context.textAlign="left";
-    roundedRect(context,x,y+270,36,36,10,accent);text(`${index+1}`,x+12,y+276,18,700,"#fff");
+    context.textAlign="center";context.fillStyle="#a0a7b1";context.font=`500 ${isLow?14:13}px "Noto Sans KR", sans-serif`;context.fillText(isLow?"사진 붙이기":"실험 사진",x+173,y+164);context.textAlign="left";
+    roundedRect(context,x,y+270,36,36,isLow?18:10,accent);text(`${index+1}`,x+12,y+276,18,700,"#fff");
     fit(data.steps[index]||`${index+1}단계를 입력하세요`,{x:x+50,y:y+270,width:296,height:140},{maxSize:20,minSize:14,weight:500,lineRatio:1.42,justify:true,color:data.steps[index]?ink:"#a4a9b2"});
   }
-  text("MY LAB · EXPERIMENT WORKSHEET",852,1668,11,700,mixHex(accent,"#1d1d1f",.25));
+  text(isLow?"MY LAB · LITTLE SCIENTIST":"MY LAB · EXPERIMENT WORKSHEET",isLow?900:852,1668,11,700,mixHex(accent,"#1d1d1f",.25));
   return warnings;
 }
 
@@ -499,7 +514,7 @@ function renderWorksheetPreview(){
     if(document.fonts?.ready)await document.fonts.ready;
     const canvas=$("#worksheetCanvas");if(!canvas)return;
     const warnings=drawWorksheet(canvas),status=$("#worksheetStatus");
-    if(status)status.textContent=warnings.some(item=>item.truncated)?"내용이 너무 길어 일부가 생략되었습니다. 문장을 줄여 주세요.":warnings.length?"긴 내용에 맞춰 글자 크기를 자동 조절했습니다.":"입력 내용이 실시간으로 반영됩니다.";
+    if(status)status.textContent=warnings.some(item=>item.truncated)?`${worksheetModeName()} · 내용이 너무 길어 일부가 생략되었습니다.`:warnings.length?`${worksheetModeName()} · 긴 내용에 맞춰 글자 크기를 조절했습니다.`:`${worksheetModeName()} · 입력 내용이 실시간으로 반영됩니다.`;
   });
 }
 
@@ -516,7 +531,7 @@ async function downloadWorksheet(){
     const canvas=document.createElement("canvas");canvas.width=2480;canvas.height=3508;drawWorksheet(canvas,2);
     const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));if(!blob)throw new Error("이미지를 만들 수 없습니다.");
     const url=URL.createObjectURL(blob),link=document.createElement("a"),safeName=(clean($("#nameInput").value)||"실험지").replace(/[\\/:*?\"<>|]/g,"_");
-    link.href=url;link.download=`${clean($("#myExperimentId").value)||"MY"}_${safeName}_실험지.png`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    link.href=url;link.download=`${clean($("#myExperimentId").value)||"MY"}_${safeName}_${worksheetModeName()}.png`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(error){console.error(error);alert(error.message)}finally{button.disabled=false;button.textContent="PNG 저장"}
 }
 
