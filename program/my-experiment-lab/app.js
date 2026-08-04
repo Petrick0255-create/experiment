@@ -14,6 +14,9 @@ const escapeHtml=value=>clean(value).replace(/[&<>"']/g,char=>({"&":"&amp;","<":
 let state=loadState();
 let archiveExperiments=loadArchiveStorage();
 let curriculumUnits=loadCurriculumStorage();
+let stepImageDrafts=new Map();
+let activeStepImageIndex=null;
+let stepImageLoadToken=0;
 let selectedExperimentId="";
 let selectedDeckId="";
 let currentTab="experiments";
@@ -30,6 +33,7 @@ function normalizeState(raw){
     id:clean(item.id),name:clean(item.name),referenceId:clean(item.referenceId),referenceName:clean(item.referenceName),
     field:clean(item.field),difficulty:clean(item.difficulty),target:clean(item.target),grade:clean(item.grade),
     curriculum:clean(item.curriculum),unit:clean(item.unit),goal:clean(item.goal),thinking:clean(item.thinking),worksheetColor:clean(item.worksheetColor)||"#6f93d6",
+    stepImages:Array.isArray(item.stepImages)?item.stepImages.slice(0,6).map((image,index)=>({step:Number(image.step)||index+1,fileId:clean(image.fileId),fileName:clean(image.fileName),viewUrl:clean(image.viewUrl),mimeType:clean(image.mimeType),size:Number(image.size)||0,updatedAt:clean(image.updatedAt)})):[],
     materials:Array.isArray(item.materials)?item.materials.map(m=>({name:clean(m.name),quantity:clean(m.quantity),link:clean(m.link)})):[],
     steps:Array.isArray(item.steps)?item.steps:lines(item.steps),observation:clean(item.observation),note:clean(item.note),
     createdAt:item.createdAt||"",updatedAt:item.updatedAt||""
@@ -109,7 +113,7 @@ function normalizeArchive(raw){
 function boot(){
   const year=new Date().getFullYear();
   $("#materialYear").value=year;$("#curriculumYear").value=year;
-  buildGradeOptions();buildPeriodOptions();buildGradeTabs();setupWorksheetModeControl();bindEvents();
+  buildGradeOptions();buildPeriodOptions();buildGradeTabs();setupWorksheetModeControl();setupStepImageInputs();bindEvents();
   renderAll();
   const config=getSyncConfig();
   if(config&&!state.dirty)loadFromSheet(false);
@@ -145,7 +149,7 @@ function newExperiment(base=null){
   const now=new Date().toISOString();
   const item={id:nextExperimentId(),name:base?`${base.name} 새 계획`:"",referenceId:base?.referenceId||"",referenceName:base?.referenceName||"",
     field:base?.field||"",difficulty:base?.difficulty||"",target:base?.target||"",grade:base?.grade||"",curriculum:base?.curriculum||"",unit:base?.unit||"",
-    goal:base?.goal||"",thinking:base?.thinking||"",worksheetColor:base?.worksheetColor||"#6f93d6",materials:base?structuredClone(base.materials):[],steps:base?[...base.steps]:[],observation:base?.observation||"",note:base?.note||"",createdAt:now,updatedAt:now};
+    goal:base?.goal||"",thinking:base?.thinking||"",worksheetColor:base?.worksheetColor||"#6f93d6",stepImages:[],materials:base?structuredClone(base.materials):[],steps:base?[...base.steps]:[],observation:base?.observation||"",note:base?.note||"",createdAt:now,updatedAt:now};
   state.experiments.unshift(item);selectedExperimentId=item.id;persist("새 실험 생성됨");renderExperiments();openEditor(item.id);
 }
 
@@ -176,7 +180,7 @@ function openEditor(id){
   $("#targetInput").value=item.target;$("#gradeInput").value=item.grade;renderCurriculumOptions(item.curriculum);$("#unitInput").value=item.unit;
   $("#goalInput").value=item.goal;$("#thinkingInput").value=item.thinking;$("#worksheetColorInput").value=item.worksheetColor||"#6f93d6";$$('.step-input').forEach((input,index)=>{input.value=item.steps[index]||""});$("#observationInput").value=item.observation;$("#noteInput").value=item.note;
   $("#referenceId").value=item.referenceId;$("#referenceName").value=item.referenceName;$("#editorTitle").textContent=item.name||"새 실험";
-  renderReferenceSummary();renderMaterialRows(item.materials);renderExperiments();renderWorksheetPreview();
+  renderReferenceSummary();renderMaterialRows(item.materials);prepareStepImages(item);renderExperiments();renderWorksheetPreview();
 }
 
 function renderReferenceSummary(){
@@ -244,7 +248,7 @@ function saveExperiment(event){
 
 function deleteExperiment(){
   const item=state.experiments.find(x=>x.id===selectedExperimentId);if(!item||!confirm(`‘${item.name||"이름 없는 실험"}’을 삭제할까요?\n커리큘럼 배치와 준비물 체크도 함께 삭제됩니다.`))return;
-  state.experiments=state.experiments.filter(x=>x.id!==item.id);state.placements=state.placements.filter(p=>p.experimentId!==item.id);
+  state.experiments=state.experiments.filter(x=>x.id!==item.id);state.placements=state.placements.filter(p=>p.experimentId!==item.id);stepImageDrafts.delete(item.id);
   Object.keys(state.checks).forEach(key=>{if(key.includes(`-${item.id}-`))delete state.checks[key]});
   selectedExperimentId="";$("#experimentForm").hidden=true;$("#editorEmpty").hidden=false;persist("실험 삭제됨");renderAll();
 }
@@ -407,6 +411,11 @@ function roundedRect(context,x,y,width,height,radius,fill,stroke=""){
   const r=Math.min(radius,width/2,height/2);context.beginPath();context.moveTo(x+r,y);context.lineTo(x+width-r,y);context.quadraticCurveTo(x+width,y,x+width,y+r);context.lineTo(x+width,y+height-r);context.quadraticCurveTo(x+width,y+height,x+width-r,y+height);context.lineTo(x+r,y+height);context.quadraticCurveTo(x,y+height,x,y+height-r);context.lineTo(x,y+r);context.quadraticCurveTo(x,y,x+r,y);context.closePath();if(fill){context.fillStyle=fill;context.fill()}if(stroke){context.strokeStyle=stroke;context.lineWidth=1.5;context.stroke()}
 }
 
+function drawImageContain(context,image,x,y,width,height){
+  if(!image?.naturalWidth&&!image?.width)return;const sourceWidth=image.naturalWidth||image.width,sourceHeight=image.naturalHeight||image.height,ratio=Math.min(width/sourceWidth,height/sourceHeight),drawWidth=sourceWidth*ratio,drawHeight=sourceHeight*ratio;
+  context.fillStyle="#fff";context.fillRect(x,y,width,height);context.drawImage(image,x+(width-drawWidth)/2,y+(height-drawHeight)/2,drawWidth,drawHeight);
+}
+
 function splitCanvasLines(context,text,maxWidth){
   const paragraphs=String(text||"").split(/\r?\n/),result=[];
   paragraphs.forEach((paragraph,paragraphIndex)=>{
@@ -463,6 +472,88 @@ function worksheetMode(){
 
 function worksheetModeName(){return worksheetMode()==="low"?"저학년용":"고학년용"}
 
+function setupStepImageInputs(){
+  $$(".step-input").forEach((textarea,index)=>{
+    if(textarea.parentElement.querySelector(".step-image-box"))return;
+    const box=document.createElement("div");box.className="step-image-box";box.dataset.stepImage=String(index);box.tabIndex=0;
+    box.innerHTML=`<img alt="${index+1}단계 실험 사진" hidden><div class="step-image-placeholder"><strong>실험 사진</strong><span>클릭 후 Ctrl+V · 드래그 가능</span></div><div class="step-image-actions"><button type="button" data-image-select>파일 선택</button><button type="button" data-image-remove hidden>삭제</button></div><input type="file" accept="image/*" hidden>`;
+    textarea.before(box);const input=$("input[type=file]",box);
+    box.addEventListener("click",()=>{activeStepImageIndex=index;box.focus()});
+    $("[data-image-select]",box).addEventListener("click",event=>{event.stopPropagation();activeStepImageIndex=index;input.click()});
+    $("[data-image-remove]",box).addEventListener("click",event=>{event.stopPropagation();removeStepImage(index)});
+    input.addEventListener("change",event=>{const file=event.target.files[0];if(file)setStepImageFile(index,file);event.target.value=""});
+    box.addEventListener("dragover",event=>{event.preventDefault();box.classList.add("drag-over")});box.addEventListener("dragleave",()=>box.classList.remove("drag-over"));
+    box.addEventListener("drop",event=>{event.preventDefault();box.classList.remove("drag-over");activeStepImageIndex=index;const file=[...event.dataTransfer.files].find(item=>item.type.startsWith("image/"));if(file)setStepImageFile(index,file)});
+  });
+  document.addEventListener("paste",event=>{const direct=[...(event.clipboardData?.files||[])].find(item=>item.type.startsWith("image/")),clipboardItem=[...(event.clipboardData?.items||[])].find(item=>item.type.startsWith("image/")),file=direct||clipboardItem?.getAsFile();if(!file||activeStepImageIndex===null)return;event.preventDefault();setStepImageFile(activeStepImageIndex,file)});
+}
+
+function draftArrayFor(item){
+  if(!item)return Array(6).fill(null);
+  if(!stepImageDrafts.has(item.id)){
+    const drafts=Array(6).fill(null);(item.stepImages||[]).forEach((image,index)=>{const position=Math.max(0,Math.min(5,(Number(image.step)||index+1)-1));drafts[position]={...image,dirty:false,removed:false,dataUrl:"",image:null}});stepImageDrafts.set(item.id,drafts);
+  }
+  return stepImageDrafts.get(item.id);
+}
+
+function currentStepImageDrafts(){return draftArrayFor(state.experiments.find(item=>item.id===selectedExperimentId))}
+
+function prepareStepImages(item){
+  draftArrayFor(item);renderStepImageInputs();
+  if((item.stepImages||[]).some(image=>image.fileId))loadStoredStepImages(item.id);
+}
+
+function renderStepImageInputs(){
+  const drafts=currentStepImageDrafts();$$('.step-image-box').forEach((box,index)=>{const draft=drafts[index],img=$("img",box),placeholder=$(".step-image-placeholder",box),remove=$("[data-image-remove]",box);box.classList.toggle("active",activeStepImageIndex===index);
+    if(draft?.dataUrl){img.src=draft.dataUrl;img.hidden=false;placeholder.hidden=true;remove.hidden=false;box.classList.add("has-image")}
+    else{img.removeAttribute("src");img.hidden=true;placeholder.hidden=false;remove.hidden=!draft?.fileId;box.classList.remove("has-image");$("span",placeholder).textContent=draft?.fileId?"Drive 이미지 불러오는 중…":"클릭 후 Ctrl+V · 드래그 가능"}
+  });
+}
+
+async function imageSource(file){
+  if(window.createImageBitmap)return createImageBitmap(file);
+  const url=URL.createObjectURL(file);try{return await new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=url})}finally{setTimeout(()=>URL.revokeObjectURL(url),1000)}
+}
+
+function blobDataUrl(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob)})}
+
+function dataUrlImage(dataUrl){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=dataUrl})}
+
+async function compressStepImage(file){
+  if(!file.type.startsWith("image/"))throw new Error("이미지 파일만 사용할 수 있습니다.");
+  const source=await imageSource(file),maxWidth=1200,maxHeight=900,ratio=Math.min(1,maxWidth/source.width,maxHeight/source.height),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(source.width*ratio));canvas.height=Math.max(1,Math.round(source.height*ratio));
+  const context=canvas.getContext("2d");context.fillStyle="#fff";context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(source,0,0,canvas.width,canvas.height);if(source.close)source.close();
+  let blob=null;for(const quality of[.78,.68,.58]){blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",quality));if(blob&&blob.size<=320000)break}if(!blob)throw new Error("이미지를 압축하지 못했습니다.");
+  return{dataUrl:await blobDataUrl(blob),mimeType:"image/jpeg",size:blob.size};
+}
+
+async function setStepImageFile(index,file){
+  const item=state.experiments.find(experiment=>experiment.id===selectedExperimentId);if(!item){alert("실험을 먼저 선택해 주세요.");return}
+  const box=$(`.step-image-box[data-step-image="${index}"]`);box?.classList.add("loading");$("#saveState").textContent=`${index+1}단계 이미지 압축 중…`;
+  try{const compressed=await compressStepImage(file),image=await dataUrlImage(compressed.dataUrl),drafts=draftArrayFor(item),previous=drafts[index]||{};drafts[index]={...previous,step:index+1,dataUrl:compressed.dataUrl,image,mimeType:compressed.mimeType,size:compressed.size,dirty:true,removed:false};state.dirty=true;persist(`${index+1}단계 이미지 준비됨 · 시트 동기화 필요`);renderStepImageInputs();renderWorksheetPreview()}
+  catch(error){console.error(error);alert(error.message)}finally{box?.classList.remove("loading")}
+}
+
+function removeStepImage(index){
+  const item=state.experiments.find(experiment=>experiment.id===selectedExperimentId);if(!item)return;const drafts=draftArrayFor(item),previous=drafts[index]||{};drafts[index]={...previous,step:index+1,dataUrl:"",image:null,dirty:true,removed:true};state.dirty=true;persist(`${index+1}단계 이미지 삭제 예정 · 시트 동기화 필요`);renderStepImageInputs();renderWorksheetPreview();
+}
+
+async function loadStoredStepImages(experimentId){
+  const config=getSyncConfig();if(!config)return;const token=++stepImageLoadToken;
+  try{const sep=config.url.includes("?")?"&":"?",response=await fetch(`${config.url}${sep}key=${encodeURIComponent(config.key)}&action=stepImages&experimentId=${encodeURIComponent(experimentId)}&_=${Date.now()}`,{cache:"no-store"}),result=await response.json();if(!result.ok)throw new Error(result.message||"단계 이미지 불러오기 실패");if(token!==stepImageLoadToken||selectedExperimentId!==experimentId)return;
+    const item=state.experiments.find(experiment=>experiment.id===experimentId),drafts=draftArrayFor(item);for(const stored of result.images||[]){const index=Number(stored.step)-1;if(index<0||index>5||drafts[index]?.dirty)continue;const image=await dataUrlImage(stored.dataUrl);drafts[index]={...(drafts[index]||{}),...stored,image,dirty:false,removed:false}}
+    renderStepImageInputs();renderWorksheetPreview();
+  }catch(error){console.error(error);$("#saveState").textContent="단계 이미지 불러오기 실패"}
+}
+
+function collectStepImageChanges(){
+  const changes=[];stepImageDrafts.forEach((drafts,experimentId)=>drafts.forEach((draft,index)=>{if(!draft?.dirty)return;changes.push({experimentId,step:index+1,fileId:draft.fileId||"",dataUrl:draft.removed?"":draft.dataUrl||"",remove:!!draft.removed})}));return changes;
+}
+
+function reconcileStepImageDrafts(){
+  state.experiments.forEach(item=>{const drafts=stepImageDrafts.get(item.id);if(!drafts)return;const metadata=Array(6).fill(null);(item.stepImages||[]).forEach((image,index)=>metadata[(Number(image.step)||index+1)-1]=image);for(let index=0;index<6;index++){const current=drafts[index],saved=metadata[index];drafts[index]=saved?{...saved,dataUrl:current?.removed?"":current?.dataUrl||"",image:current?.removed?null:current?.image||null,dirty:false,removed:false}:null}});renderStepImageInputs();
+}
+
 function drawWorksheet(canvas,exportScale=1){
   const context=canvas.getContext("2d"),scale=(canvas.width/WORKSHEET_SIZE.width)||exportScale;
   context.setTransform(scale,0,0,scale,0,0);context.clearRect(0,0,WORKSHEET_SIZE.width,WORKSHEET_SIZE.height);
@@ -495,13 +586,12 @@ function drawWorksheet(canvas,exportScale=1){
   context.strokeStyle=line;context.beginPath();context.moveTo(76,640);context.lineTo(1164,640);context.stroke();
   text(isLow?"차근차근 실험해요":"실험 과정",76,675,isLow?27:25,700,isLow?accent:ink);text("사진을 붙이고 각 단계의 과정을 정리합니다.",isLow?300:205,682,14,500,"#7b8390");
 
-  const columns=[76,447,818],rows=[735,1215];
+  const columns=[76,447,818],rows=[735,1215],stepDrafts=currentStepImageDrafts();
   for(let index=0;index<6;index++){
     const x=columns[index%3],y=rows[Math.floor(index/3)];
     text(isLow?`${index+1}단계`:`STEP ${String(index+1).padStart(2,"0")}`,x,y,isLow?16:14,700,accent);
-    context.save();context.setLineDash(isLow?[6,6]:[8,7]);roundedRect(context,x,y+30,346,220,isLow?24:15,"",mixHex(accent,"#ffffff",.52));context.restore();
-    context.strokeStyle=mixHex(accent,"#ffffff",.5);context.lineWidth=2;context.beginPath();context.moveTo(x+154,y+129);context.lineTo(x+192,y+129);context.moveTo(x+173,y+110);context.lineTo(x+173,y+148);context.stroke();
-    context.textAlign="center";context.fillStyle="#a0a7b1";context.font=`500 ${isLow?14:13}px "Noto Sans KR", sans-serif`;context.fillText(isLow?"사진 붙이기":"실험 사진",x+173,y+164);context.textAlign="left";
+    const photo=stepDrafts[index]?.image;if(photo){context.save();context.beginPath();context.rect(x+3,y+33,340,214);context.clip();drawImageContain(context,photo,x+3,y+33,340,214);context.restore();roundedRect(context,x,y+30,346,220,isLow?24:15,"",mixHex(accent,"#ffffff",.52))}
+    else{context.save();context.setLineDash(isLow?[6,6]:[8,7]);roundedRect(context,x,y+30,346,220,isLow?24:15,"",mixHex(accent,"#ffffff",.52));context.restore();context.strokeStyle=mixHex(accent,"#ffffff",.5);context.lineWidth=2;context.beginPath();context.moveTo(x+154,y+129);context.lineTo(x+192,y+129);context.moveTo(x+173,y+110);context.lineTo(x+173,y+148);context.stroke();context.textAlign="center";context.fillStyle="#a0a7b1";context.font=`500 ${isLow?14:13}px "Noto Sans KR", sans-serif`;context.fillText(isLow?"사진 붙이기":"실험 사진",x+173,y+164);context.textAlign="left"}
     roundedRect(context,x,y+270,36,36,isLow?18:10,accent);text(`${index+1}`,x+12,y+276,18,700,"#fff");
     fit(data.steps[index]||`${index+1}단계를 입력하세요`,{x:x+50,y:y+270,width:296,height:140},{maxSize:20,minSize:14,weight:500,lineRatio:1.42,justify:true,color:data.steps[index]?ink:"#a4a9b2"});
   }
@@ -558,9 +648,9 @@ async function loadFromSheet(showAlert=true){
 async function syncToSheet(){
   const config=getSyncConfig()||configureSync();if(!config)return;if(!state.dirty&&state.experiments.length===0){await loadFromSheet(true);return}
   const button=$("#syncButton");button.disabled=true;button.textContent="동기화 중…";$("#saveState").textContent="백업 및 시트 갱신 중";
-  try{const payload={version:1,experiments:state.experiments,placements:state.placements,checks:state.checks,slotCounts:state.slotCounts,updatedAt:new Date().toISOString()};
-    const response=await fetch(config.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:config.key,action:"sync",payload})});const result=await response.json();if(!result.ok)throw new Error(result.message||"동기화 실패");
-    archiveExperiments=normalizeArchive(result.payload.archiveExperiments||[]);cacheArchiveExperiments();curriculumUnits=normalizeCurriculumUnits(result.payload.curriculumUnits||[]);cacheCurriculumUnits();state=normalizeState({...result.payload,dirty:false});persist(`동기화 완료 · 내 실험 ${state.experiments.length}개 · 교과 단원 ${curriculumUnits.length}개`,false);renderAll();alert(`동기화가 완료되었습니다.\n내 실험 ${state.experiments.length}개 · 배치 ${state.placements.length}개\n교과 연계 단원 ${curriculumUnits.length}개`);
+  try{const payload={version:1,experiments:state.experiments,placements:state.placements,checks:state.checks,slotCounts:state.slotCounts,updatedAt:new Date().toISOString()},imageChanges=collectStepImageChanges();
+    const response=await fetch(config.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:config.key,action:"sync",payload,imageChanges})});const result=await response.json();if(!result.ok)throw new Error(result.message||"동기화 실패");
+    archiveExperiments=normalizeArchive(result.payload.archiveExperiments||[]);cacheArchiveExperiments();curriculumUnits=normalizeCurriculumUnits(result.payload.curriculumUnits||[]);cacheCurriculumUnits();state=normalizeState({...result.payload,dirty:false});reconcileStepImageDrafts();persist(`동기화 완료 · 내 실험 ${state.experiments.length}개 · 단계 이미지 ${result.savedImageCount||0}장`,false);renderAll();alert(`동기화가 완료되었습니다.\n내 실험 ${state.experiments.length}개 · 배치 ${state.placements.length}개\n저장·삭제된 단계 이미지 ${result.savedImageCount||0}장`);
   }catch(error){console.error(error);$("#saveState").textContent="동기화 실패";alert(`동기화하지 못했습니다.\n${error.message}`)}finally{button.disabled=false;button.textContent="시트 동기화"}
 }
 

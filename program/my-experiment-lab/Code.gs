@@ -7,10 +7,11 @@ var LAB_CONFIG = {
   guideSheet: '사용 안내',
   settingSheet: '설정',
   curriculumSheet: '교과정리',
+  stepImageFolderId: '1UCOpwTUSOimECz9j-3o2e86Ju70KWtYE',
   archiveSpreadsheetId: '1Fbfaw3ZEE7KP6IzeNwp5kigbwt5W2kgufzS6Cdm_xck',
   archiveMasterSheet: '실험 마스터',
   archiveImageSheet: '이미지 파일',
-  experimentHeaders: ['내 실험 ID','실험명','참고 실험 ID','참고 실험명','분야','난이도','대상','학년','교과 연계','연계 단원','실험 목표','준비물 JSON','실험 순서','관찰·기록','메모','생성일','수정일','생각해보기','실험지 배경색'],
+  experimentHeaders: ['내 실험 ID','실험명','참고 실험 ID','참고 실험명','분야','난이도','대상','학년','교과 연계','연계 단원','실험 목표','준비물 JSON','실험 순서','관찰·기록','메모','생성일','수정일','생각해보기','실험지 배경색','단계 이미지 JSON'],
   placementHeaders: ['배치 ID','연도','학년','월','주','순번','내 실험 ID','실험명','수정일'],
   materialHeaders: ['체크 ID','연도','학년','월','주','순번','내 실험 ID','실험명','준비물','수량','구매 링크','체크','수정일'],
   backupHeaders: ['백업 일시','데이터 종류','건수','전체 JSON'],
@@ -31,7 +32,8 @@ function onOpen() {
 function setupLabSheets() {
   var ss = SpreadsheetApp.openById(LAB_CONFIG.spreadsheetId);
   ensureLabSheets_(ss);
-  SpreadsheetApp.getUi().alert('내 실험, 내 실험 배치, 준비물 체크, 백업, 사용 안내 시트가 준비되었습니다. 기존 실험 아카이브와 직접 연결됩니다.');
+  var imageFolder = DriveApp.getFolderById(LAB_CONFIG.stepImageFolderId);
+  SpreadsheetApp.getUi().alert('관리 시트가 준비되었습니다. 단계 이미지는 ' + imageFolder.getName() + ' 폴더에 저장됩니다.');
 }
 
 function showOrCreateLabSyncKey() {
@@ -59,6 +61,7 @@ function doGet(e) {
     verifyKey_(e && e.parameter ? e.parameter.key : '');
     var ss = SpreadsheetApp.openById(LAB_CONFIG.spreadsheetId);
     ensureLabSheets_(ss);
+    if (e && e.parameter && e.parameter.action === 'stepImages') return jsonResponse_({ok:true, images:readStepImageData_(ss, e.parameter.experimentId || '')});
     return jsonResponse_({ok:true, payload:readPayload_(ss)});
   } catch (error) {
     return jsonResponse_({ok:false, message:error.message});
@@ -79,8 +82,10 @@ function doPost(e) {
     ensureLabSheets_(ss);
     var previous = readPayload_(ss);
     appendBackup_(ss, previous, '동기화 전 자동 백업');
+    removeDeletedExperimentImages_(previous.experiments || [], request.payload.experiments || []);
+    var savedImageCount = applyStepImageChanges_(request.payload.experiments, request.imageChanges || []);
     writePayload_(ss, request.payload);
-    return jsonResponse_({ok:true, payload:readPayload_(ss)});
+    return jsonResponse_({ok:true, savedImageCount:savedImageCount, payload:readPayload_(ss)});
   } catch (error) {
     return jsonResponse_({ok:false, message:error.message});
   } finally {
@@ -213,10 +218,11 @@ function readExperiments_(sheet) {
   var count = Math.max(sheet.getLastRow() - 1, 0);
   if (!count) return [];
   return sheet.getRange(2, 1, count, LAB_CONFIG.experimentHeaders.length).getValues().filter(function(row) { return row[0]; }).map(function(row) {
-    var materials = [], steps = [];
+    var materials = [], steps = [], stepImages = [];
     try { materials = JSON.parse(row[11] || '[]'); } catch (ignore) {}
     try { steps = JSON.parse(row[12] || '[]'); } catch (ignore2) { steps = String(row[12] || '').split(/\r?\n/).filter(Boolean); }
-    return {id:String(row[0]), name:String(row[1] || ''), referenceId:String(row[2] || ''), referenceName:String(row[3] || ''), field:String(row[4] || ''), difficulty:String(row[5] || ''), target:String(row[6] || ''), grade:String(row[7] || ''), curriculum:String(row[8] || ''), unit:String(row[9] || ''), goal:String(row[10] || ''), materials:materials, steps:steps, observation:String(row[13] || ''), note:String(row[14] || ''), createdAt:dateText_(row[15]), updatedAt:dateText_(row[16]), thinking:String(row[17] || ''), worksheetColor:String(row[18] || '#6f93d6')};
+    try { stepImages = JSON.parse(row[19] || '[]'); } catch (ignore3) {}
+    return {id:String(row[0]), name:String(row[1] || ''), referenceId:String(row[2] || ''), referenceName:String(row[3] || ''), field:String(row[4] || ''), difficulty:String(row[5] || ''), target:String(row[6] || ''), grade:String(row[7] || ''), curriculum:String(row[8] || ''), unit:String(row[9] || ''), goal:String(row[10] || ''), materials:materials, steps:steps, observation:String(row[13] || ''), note:String(row[14] || ''), createdAt:dateText_(row[15]), updatedAt:dateText_(row[16]), thinking:String(row[17] || ''), worksheetColor:String(row[18] || '#6f93d6'), stepImages:stepImages};
   });
 }
 
@@ -235,12 +241,79 @@ function readChecks_(sheet) {
   return checks;
 }
 
+function readStepImageData_(ss, experimentId) {
+  if (!experimentId) throw new Error('실험 ID가 없습니다.');
+  var sheet = ss.getSheetByName(LAB_CONFIG.experimentSheet), count = Math.max(sheet.getLastRow() - 1, 0);
+  if (!count) return [];
+  var match = sheet.getRange(2, 1, count, 1).createTextFinder(String(experimentId)).matchEntireCell(true).findNext();
+  if (!match) return [];
+  var metadata = [];
+  try { metadata = JSON.parse(sheet.getRange(match.getRow(), 20).getDisplayValue() || '[]'); } catch (ignore) {}
+  return metadata.filter(function(image) { return image && image.fileId; }).map(function(image) {
+    try {
+      var file = DriveApp.getFileById(String(image.fileId)), blob = file.getBlob(), mimeType = blob.getContentType() || image.mimeType || 'image/jpeg';
+      return {step:Number(image.step) || 1,fileId:file.getId(),fileName:file.getName(),mimeType:mimeType,size:file.getSize(),dataUrl:'data:' + mimeType + ';base64,' + Utilities.base64Encode(blob.getBytes())};
+    } catch (error) { return null; }
+  }).filter(function(image) { return image; });
+}
+
+function applyStepImageChanges_(experiments, changes) {
+  var byId = {}, folder = DriveApp.getFolderById(LAB_CONFIG.stepImageFolderId), saved = 0;
+  (experiments || []).forEach(function(item) { byId[String(item.id)] = item; if (!Array.isArray(item.stepImages)) item.stepImages = []; });
+  (changes || []).forEach(function(change) {
+    var item = byId[String(change.experimentId || '')], step = Number(change.step);
+    if (!item || step < 1 || step > 6) throw new Error('단계 이미지의 실험 ID 또는 단계 번호가 올바르지 않습니다.');
+    var current = null;
+    item.stepImages = (item.stepImages || []).filter(function(image) { if (Number(image.step) === step) { current = image; return false; } return true; });
+    var oldFileId = String(change.fileId || (current && current.fileId) || '');
+    if (oldFileId) trashFileInFolder_(oldFileId, folder);
+    if (change.remove) { saved += 1; return; }
+    var dataUrl = String(change.dataUrl || ''), match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+    if (!match) throw new Error(item.name + ' ' + step + '단계 이미지 데이터가 올바르지 않습니다.');
+    if (match[2].length > 2500000) throw new Error(item.name + ' ' + step + '단계 이미지가 너무 큽니다.');
+    var fileName = safeDriveName_(item.name) + '-' + step + '.jpg', sameNames = folder.getFilesByName(fileName);
+    while (sameNames.hasNext()) sameNames.next().setTrashed(true);
+    var blob = Utilities.newBlob(Utilities.base64Decode(match[2]), match[1], fileName), file = folder.createFile(blob), stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ssXXX");
+    item.stepImages.push({step:step,fileId:file.getId(),fileName:fileName,viewUrl:'https://drive.google.com/file/d/' + file.getId() + '/view',mimeType:match[1],size:file.getSize(),updatedAt:stamp});saved += 1;
+  });
+  (experiments || []).forEach(function(item) {
+    item.stepImages = (item.stepImages || []).sort(function(a, b) { return Number(a.step) - Number(b.step); });
+    item.stepImages.forEach(function(image, index) {
+      var desired = safeDriveName_(item.name) + '-' + (Number(image.step) || index + 1) + '.jpg';
+      if (image.fileId && image.fileName !== desired) { try { DriveApp.getFileById(String(image.fileId)).setName(desired); image.fileName = desired; } catch (ignore) {} }
+    });
+  });
+  return saved;
+}
+
+function removeDeletedExperimentImages_(previousExperiments, nextExperiments) {
+  var keep = {}, folder = DriveApp.getFolderById(LAB_CONFIG.stepImageFolderId);
+  (nextExperiments || []).forEach(function(item) { keep[String(item.id)] = true; });
+  (previousExperiments || []).forEach(function(item) {
+    if (keep[String(item.id)]) return;
+    (item.stepImages || []).forEach(function(image) { if (image.fileId) trashFileInFolder_(String(image.fileId), folder); });
+  });
+}
+
+function trashFileInFolder_(fileId, folder) {
+  try {
+    var file = DriveApp.getFileById(fileId), parents = file.getParents(), belongs = false;
+    while (parents.hasNext()) if (parents.next().getId() === folder.getId()) { belongs = true; break; }
+    if (belongs) file.setTrashed(true);
+  } catch (ignore) {}
+}
+
+function safeDriveName_(value) {
+  var name = String(value || '이름 없는 실험').normalize('NFC').replace(/[\\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+  return (name || '이름 없는 실험').slice(0, 100);
+}
+
 function writePayload_(ss, payload) {
   var experiments = payload.experiments || [], placements = payload.placements || [], stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
   var expById = {};
   experiments.forEach(function(item) { expById[item.id] = item; });
   var expRows = experiments.map(function(item) {
-    return [item.id,item.name,item.referenceId || '',item.referenceName || '',item.field || '',item.difficulty || '',item.target || '',item.grade || '',item.curriculum || '',item.unit || '',item.goal || '',JSON.stringify(item.materials || []),JSON.stringify(item.steps || []),item.observation || '',item.note || '',item.createdAt || stamp,item.updatedAt || stamp,item.thinking || '',item.worksheetColor || '#6f93d6'];
+    return [item.id,item.name,item.referenceId || '',item.referenceName || '',item.field || '',item.difficulty || '',item.target || '',item.grade || '',item.curriculum || '',item.unit || '',item.goal || '',JSON.stringify(item.materials || []),JSON.stringify(item.steps || []),item.observation || '',item.note || '',item.createdAt || stamp,item.updatedAt || stamp,item.thinking || '',item.worksheetColor || '#6f93d6',JSON.stringify(item.stepImages || [])];
   });
   var placementRows = placements.map(function(item) {
     var experiment = expById[item.experimentId] || {};
